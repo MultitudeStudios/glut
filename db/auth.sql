@@ -10,8 +10,8 @@ CREATE TABLE auth.users (
   verified_at timestamptz,
   created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
   updated_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
-  last_auth_at timestamptz,
-  last_auth_ip text
+  last_login_at timestamptz,
+  last_login_ip text
 );
 
 CREATE TABLE auth.roles (
