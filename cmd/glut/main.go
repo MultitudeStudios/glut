@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"glut/auth"
+	authapi "glut/auth/api"
+	"glut/common/flux"
 	"glut/common/log"
 	"glut/common/postgres"
 	"log/slog"
@@ -62,6 +65,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
+	s := flux.NewServer(&flux.ServerOptions{
+		Debug:             true,
+		Logger:            logger,
+		Port:              cfg.Server.Port,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
+		ShutdownTimeout:   cfg.Server.ShutdownTimeout,
+	})
+
+	authapi.Handler(s, auth.NewService(db, &auth.Config{}))
+
+	if err := s.Start(ctx); err != nil {
+		return err
+	}
+	defer s.Stop()
 	return nil
 }
 
