@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"glut/auth"
 	"glut/common/flux"
 	"glut/common/valid"
+	"net/http"
 	"time"
 )
 
@@ -39,6 +41,32 @@ func (a *API) QueryUsers(f *flux.Flow, r *QueryUsersRequest) ([]UserResponse, er
 	return res, nil
 }
 
+func (a *API) CreateUser(f *flux.Flow, r *CreateUserRequest) (*UserResponse, error) {
+	in := &auth.NewUserInput{
+		Username: r.Username,
+		Email:    r.Email,
+		Password: r.Password,
+	}
+	user, err := a.service.CreateUser(f, in)
+	if err != nil {
+		if verr, ok := err.(valid.Errors); ok {
+			return nil, flux.ValidationError(verr)
+		}
+		if errors.Is(err, auth.ErrUserExists) {
+			return nil, flux.NewError("user_exists", http.StatusConflict, "User already exists.")
+		}
+		return nil, fmt.Errorf("api.CreateUser: %w", err)
+	}
+
+	res := &UserResponse{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt,
+	}
+	return res, nil
+}
+
 type QueryUsersRequest struct {
 	ID     string `json:"id"`
 	Limit  int    `json:"limit"`
@@ -55,4 +83,10 @@ type UserResponse struct {
 	UpdatedBy   *string    `json:"updated_by"`
 	LastLoginAt *time.Time `json:"last_login_at"`
 	LastLoginIP *string    `json:"last_login_ip"`
+}
+
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }

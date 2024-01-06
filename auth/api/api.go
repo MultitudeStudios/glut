@@ -19,4 +19,5 @@ func Handler(s *flux.Server, service *auth.Service) {
 
 	// Users API
 	flux.New(s, "auth.users.query", a.QueryUsers, &flux.Options{})
+	flux.New(s, "auth.users.create", a.CreateUser, &flux.Options{})
 }
