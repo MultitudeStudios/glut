@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 )
@@ -43,6 +44,10 @@ type NewUserInput struct {
 	Username string
 	Email    string
 	Password string
+}
+
+type DeleteUsersInput struct {
+	IDs []string `json:"ids"`
 }
 
 func (s *Service) Users(f *flux.Flow, uq *UserQuery) ([]User, error) {
@@ -119,6 +124,25 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	return user, nil
 }
 
+func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
+	var errs valid.Errors
+	if len(in.IDs) == 0 {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Required."})
+	}
+	if !valid.IsUUIDSlice(in.IDs) {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})
+	}
+	if len(errs) != 0 {
+		return 0, errs
+	}
+
+	count, err := deleteUsers(f.Context(), s.db, in)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func queryUsers(ctx context.Context, db sqlutil.DB, uq *UserQuery) ([]User, error) {
 	q := psql.Select(
 		sm.Columns(
@@ -192,6 +216,23 @@ func saveUser(ctx context.Context, db sqlutil.DB, user User) error {
 		return err
 	}
 	return nil
+}
+
+func deleteUsers(ctx context.Context, db sqlutil.DB, in *DeleteUsersInput) (int, error) {
+	q := psql.Delete(dm.From("auth.users"))
+	if in.IDs != nil {
+		q.Apply(dm.Where(
+			psql.Quote("id").In(
+				psql.Arg(sqlutil.InSlice(in.IDs)...)),
+		))
+	}
+
+	sql, args := q.MustBuild()
+	res, err := db.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(res.RowsAffected()), nil
 }
 
 func newUser(f *flux.Flow, username, email, pass string) (User, error) {

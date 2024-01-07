@@ -67,6 +67,22 @@ func (a *API) CreateUser(f *flux.Flow, r *CreateUserRequest) (*UserResponse, err
 	return res, nil
 }
 
+func (a *API) DeleteUsers(f *flux.Flow, r *DeleteUsersRequest) (*DeleteUsersResponse, error) {
+	in := &auth.DeleteUsersInput{
+		IDs: r.IDs,
+	}
+	count, err := a.service.DeleteUsers(f, in)
+	if err != nil {
+		if verr, ok := err.(valid.Errors); ok {
+			return nil, flux.ValidationError(verr)
+		}
+		return nil, fmt.Errorf("api.DeleteUsers: %w", err)
+	}
+
+	res := &DeleteUsersResponse{count}
+	return res, nil
+}
+
 type QueryUsersRequest struct {
 	ID     string `json:"id"`
 	Limit  int    `json:"limit"`
@@ -89,4 +105,12 @@ type CreateUserRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type DeleteUsersRequest struct {
+	IDs []string `json:"ids"`
+}
+
+type DeleteUsersResponse struct {
+	Count int `json:"count"`
 }
