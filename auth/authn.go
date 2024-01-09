@@ -16,16 +16,15 @@ func NewAuthenticator(db *pgxpool.Pool) flux.Authenticator {
 		ctx := f.Context()
 		now := f.Start()
 
-		q := psql.Select(
+		sql, args := psql.Select(
 			sm.From("auth.sessions"),
 			sm.Columns("id", "user_id"),
 			psql.WhereAnd(
 				sm.Where(psql.Quote("token").EQ(psql.Arg(token))),
 				sm.Where(psql.Quote("expires_at").GT(psql.Arg(now))),
 			),
-		)
+		).MustBuild()
 
-		sql, args := q.MustBuild()
 		var id string
 		var userID string
 		if err := db.QueryRow(ctx, sql, args...).Scan(&id, &userID); err != nil {

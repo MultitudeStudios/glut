@@ -84,11 +84,12 @@ func (a *API) DeleteUsers(f *flux.Flow, r *DeleteUsersRequest) (*DeleteUsersResp
 }
 
 func (a *API) MyUser(f *flux.Flow, _ flux.Empty) (*UserResponse, error) {
-	if f.Session() == nil {
+	sess := f.Session()
+	if sess == nil {
 		return nil, flux.UnauthorizedError
 	}
 	q := &auth.UserQuery{
-		ID: f.Session().User,
+		ID: sess.User,
 	}
 	users, err := a.service.Users(f, q)
 	if err != nil {
@@ -98,7 +99,6 @@ func (a *API) MyUser(f *flux.Flow, _ flux.Empty) (*UserResponse, error) {
 		return nil, fmt.Errorf("api.MyUser: %w", err)
 	}
 	user := users[0]
-
 	res := &UserResponse{
 		ID:          user.ID,
 		Username:    user.Username,
@@ -114,11 +114,12 @@ func (a *API) MyUser(f *flux.Flow, _ flux.Empty) (*UserResponse, error) {
 }
 
 func (a *API) DeleteMyUser(f *flux.Flow, _ flux.Empty) (flux.Empty, error) {
-	if f.Session() == nil {
+	sess := f.Session()
+	if sess == nil {
 		return nil, flux.UnauthorizedError
 	}
 	in := &auth.DeleteUsersInput{
-		IDs: []string{f.Session().User},
+		IDs: []string{sess.User},
 	}
 	_, err := a.service.DeleteUsers(f, in)
 	if err != nil {

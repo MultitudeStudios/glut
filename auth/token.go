@@ -61,16 +61,13 @@ func generateToken(length int) (string, error) {
 }
 
 func saveToken(ctx context.Context, db sqlutil.DB, token Token) error {
-	q := psql.Insert(
+	sql, args := psql.Insert(
 		im.Into("auth.tokens",
 			"id", "user_id", "created_at", "expires_at", "meta",
 		),
 		im.Values(psql.Arg(token.ID, token.UserID, token.CreatedAt, token.ExpiresAt, token.Meta)),
-	)
+	).MustBuild()
 
-	sql, args := q.MustBuild()
-	if _, err := db.Exec(ctx, sql, args...); err != nil {
-		return err
-	}
-	return nil
+	_, err := db.Exec(ctx, sql, args...)
+	return err
 }

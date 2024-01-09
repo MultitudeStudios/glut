@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"errors"
 	"glut/common/flux"
 	"glut/common/sqlutil"
@@ -50,6 +49,9 @@ type ClearSessionInput struct {
 }
 
 func (s *Service) Sessions(f *flux.Flow, sq *SessionQuery) ([]Session, error) {
+	ctx := f.Context()
+	now := f.Start()
+
 	var errs valid.Errors
 	if sq.ID != "" && !valid.IsUUID(sq.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
@@ -68,102 +70,6 @@ func (s *Service) Sessions(f *flux.Flow, sq *SessionQuery) ([]Session, error) {
 		sq.Offset = 0
 	}
 
-	ctx := f.Context()
-	now := f.Start()
-	sessions, err := querySessions(ctx, s.db, sq, now)
-	if err != nil {
-		return nil, err
-	}
-	if sq.ID != "" && len(sessions) == 0 {
-		return nil, ErrSessionNotFound
-	}
-	return sessions, nil
-}
-
-func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, error) {
-	var errs valid.Errors
-	if creds.Username == "" {
-		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
-	}
-	if creds.Password == "" {
-		errs = append(errs, valid.Error{Field: "password", Error: "Required."})
-	}
-	if len(errs) != 0 {
-		return Session{}, errs
-	}
-
-	ctx := f.Context()
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return Session{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	user, err := userForAuth(ctx, tx, creds.Username)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return Session{}, ErrInvalidCredentials
-		}
-		return Session{}, err
-	}
-
-	if err := validatePassword(user.Password, creds.Password, s.cfg.PasswordChecker); err != nil {
-		if errors.Is(err, ErrInvalidPassword) {
-			return Session{}, ErrInvalidCredentials
-		}
-		return Session{}, err
-	}
-
-	sess, err := newSession(f, user.ID, s.cfg.SessionTokenLength, s.cfg.SessionTokenDuration)
-	if err != nil {
-		return Session{}, err
-	}
-	if err := saveSession(ctx, tx, sess); err != nil {
-		return Session{}, err
-	}
-	if err := updateUserLastLogin(f, tx, user.ID); err != nil {
-		return Session{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return Session{}, err
-	}
-	return sess, nil
-
-}
-
-func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error) {
-	var errs valid.Errors
-	if len(in.IDs) == 0 && in.UserID == "" {
-		errs = append(errs, valid.Error{Error: "Input cannot be empty."})
-	}
-	if !valid.IsUUIDSlice(in.IDs) {
-		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})
-	}
-	if in.UserID != "" && !valid.IsUUID(in.UserID) {
-		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
-	}
-	if len(errs) != 0 {
-		return 0, errs
-	}
-
-	count, err := deleteSessions(f.Context(), s.db, in)
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-func (s *Service) RenewSession(f *flux.Flow, id string) (time.Time, error) {
-	ctx := f.Context()
-	expiresAt := f.Start().Add(s.cfg.SessionTokenDuration)
-	if err := updateSessionExpiresAt(ctx, s.db, id, expiresAt); err != nil {
-		return time.Time{}, err
-	}
-	return expiresAt, nil
-}
-
-func querySessions(ctx context.Context, db sqlutil.DB, sq *SessionQuery, now time.Time) ([]Session, error) {
 	q := psql.Select(
 		sm.Columns(
 			"id",
@@ -175,7 +81,6 @@ func querySessions(ctx context.Context, db sqlutil.DB, sq *SessionQuery, now tim
 		),
 		sm.From("auth.sessions"),
 	)
-
 	if sq.ID != "" {
 		q.Apply(
 			sm.Where(psql.Quote("id").EQ(psql.Arg(sq.ID))),
@@ -203,128 +108,10 @@ func querySessions(ctx context.Context, db sqlutil.DB, sq *SessionQuery, now tim
 	}
 
 	sql, args := q.MustBuild()
-	rows, err := db.Query(ctx, sql, args...)
+	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
-	sessions, err := scanSessions(rows)
-	if err != nil {
-		return nil, err
-	}
-	return sessions, nil
-}
-
-func saveSession(ctx context.Context, db sqlutil.DB, sess Session) error {
-	q := psql.Insert(
-		im.Into("auth.sessions",
-			"id", "token", "user_id", "user_ip", "created_at", "expires_at",
-		),
-		im.Values(psql.Arg(sess.ID, sess.Token, sess.UserID, sess.UserIP, sess.CreatedAt, sess.ExpiresAt)),
-	)
-
-	sql, args := q.MustBuild()
-	if _, err := db.Exec(ctx, sql, args...); err != nil {
-		return err
-	}
-	return nil
-}
-
-func deleteSessions(ctx context.Context, db sqlutil.DB, in *ClearSessionInput) (int, error) {
-	q := psql.Delete(dm.From("auth.sessions"))
-	if in.IDs != nil {
-		q.Apply(dm.Where(
-			psql.Quote("id").In(
-				psql.Arg(sqlutil.InSlice(in.IDs)...)),
-		))
-	}
-	if in.UserID != "" {
-		q.Apply(dm.Where(
-			psql.Quote("user_id").EQ(psql.Arg(in.UserID)),
-		))
-	}
-
-	sql, args := q.MustBuild()
-	res, err := db.Exec(ctx, sql, args...)
-	if err != nil {
-		return 0, err
-	}
-	return int(res.RowsAffected()), nil
-}
-
-func updateSessionExpiresAt(ctx context.Context, db sqlutil.DB, id string, expiresAt time.Time) error {
-	sql, args := psql.Update(
-		um.Table("auth.sessions"),
-		um.Set("expires_at").ToArg(expiresAt),
-		um.Where(psql.Quote("id").EQ(psql.Arg(id))),
-	).MustBuild()
-
-	res, err := db.Exec(ctx, sql, args...)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrSessionNotFound
-	}
-	return nil
-}
-
-func userForAuth(ctx context.Context, db sqlutil.DB, username string) (User, error) {
-	q := psql.Select(
-		sm.From("auth.users"),
-		sm.Columns("id", "password_hash"),
-		sm.Where(psql.Quote("username").EQ(psql.Arg(username))),
-		sm.ForNoKeyUpdate(),
-	)
-
-	sql, args := q.MustBuild()
-	var userID string
-	var passwordHash string
-	if err := db.QueryRow(ctx, sql, args...).Scan(&userID, &passwordHash); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrUserNotFound
-		}
-		return User{}, err
-	}
-
-	user := User{
-		ID:       userID,
-		Password: passwordHash,
-	}
-	return user, nil
-}
-
-func updateUserLastLogin(f *flux.Flow, db sqlutil.DB, userID string) error {
-	q := psql.Update(
-		um.Table("auth.users"),
-		um.Set("last_login_at").ToArg(f.Start()),
-		um.Set("last_login_ip").ToArg(f.IP()),
-		um.Where(psql.Quote("id").EQ(psql.Arg(userID))),
-	)
-
-	sql, args := q.MustBuild()
-	if _, err := db.Exec(f.Context(), sql, args...); err != nil {
-		return err
-	}
-	return nil
-}
-
-func newSession(f *flux.Flow, userID string, tokenLength int, duration time.Duration) (Session, error) {
-	token, err := generateToken(tokenLength)
-	if err != nil {
-		return Session{}, err
-	}
-	sess := Session{
-		ID:        uuid.New().String(),
-		Token:     token,
-		UserID:    userID,
-		UserIP:    f.IP(),
-		CreatedAt: f.Start(),
-		ExpiresAt: f.Start().Add(duration),
-	}
-	return sess, nil
-}
-
-func scanSessions(rows pgx.Rows) ([]Session, error) {
 	defer rows.Close()
 
 	var sessions []Session
@@ -355,5 +142,153 @@ func scanSessions(rows pgx.Rows) ([]Session, error) {
 			ExpiresAt: expiresAt,
 		})
 	}
+	if sq.ID != "" && len(sessions) == 0 {
+		return nil, ErrSessionNotFound
+	}
 	return sessions, nil
+}
+
+func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, error) {
+	ctx := f.Context()
+	now := f.Start()
+
+	var errs valid.Errors
+	if creds.Username == "" {
+		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
+	}
+	if creds.Password == "" {
+		errs = append(errs, valid.Error{Field: "password", Error: "Required."})
+	}
+	if len(errs) != 0 {
+		return Session{}, errs
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Session{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	sql, args := psql.Select(
+		sm.From("auth.users"),
+		sm.Columns("id", "password_hash"),
+		sm.Where(psql.Quote("username").EQ(psql.Arg(creds.Username))),
+		sm.ForNoKeyUpdate(),
+	).MustBuild()
+
+	var userID string
+	var passwordHash string
+	if err := tx.QueryRow(ctx, sql, args...).Scan(&userID, &passwordHash); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Session{}, ErrInvalidCredentials
+		}
+		return Session{}, err
+	}
+
+	if err := validatePassword(passwordHash, creds.Password, s.cfg.PasswordChecker); err != nil {
+		if errors.Is(err, ErrInvalidPassword) {
+			return Session{}, ErrInvalidCredentials
+		}
+		return Session{}, err
+	}
+
+	token, err := generateToken(s.cfg.SessionTokenLength)
+	if err != nil {
+		return Session{}, err
+	}
+	sess := Session{
+		ID:        uuid.New().String(),
+		Token:     token,
+		UserID:    userID,
+		UserIP:    f.IP(),
+		CreatedAt: now,
+		ExpiresAt: now.Add(s.cfg.SessionTokenDuration),
+	}
+
+	sql, args = psql.Insert(
+		im.Into("auth.sessions",
+			"id", "token", "user_id", "user_ip", "created_at", "expires_at",
+		),
+		im.Values(psql.Arg(sess.ID, sess.Token, sess.UserID, sess.UserIP, sess.CreatedAt, sess.ExpiresAt)),
+	).MustBuild()
+
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		return Session{}, err
+	}
+
+	sql, args = psql.Update(
+		um.Table("auth.users"),
+		um.Set("last_login_at").ToArg(f.Start()),
+		um.Set("last_login_ip").ToArg(f.IP()),
+		um.Where(psql.Quote("id").EQ(psql.Arg(userID))),
+	).MustBuild()
+
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		return Session{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Session{}, err
+	}
+	return sess, nil
+
+}
+
+func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error) {
+	ctx := f.Context()
+
+	var errs valid.Errors
+	if len(in.IDs) == 0 && in.UserID == "" {
+		errs = append(errs, valid.Error{Error: "Input cannot be empty."})
+	}
+	if !valid.IsUUIDSlice(in.IDs) {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})
+	}
+	if in.UserID != "" && !valid.IsUUID(in.UserID) {
+		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
+	}
+	if len(errs) != 0 {
+		return 0, errs
+	}
+
+	q := psql.Delete(dm.From("auth.sessions"))
+	if in.IDs != nil {
+		q.Apply(dm.Where(
+			psql.Quote("id").In(
+				psql.Arg(sqlutil.InSlice(in.IDs)...)),
+		))
+	}
+	if in.UserID != "" {
+		q.Apply(dm.Where(
+			psql.Quote("user_id").EQ(psql.Arg(in.UserID)),
+		))
+	}
+
+	sql, args := q.MustBuild()
+	res, err := s.db.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(res.RowsAffected()), nil
+}
+
+func (s *Service) RenewSession(f *flux.Flow, id string) (time.Time, error) {
+	ctx := f.Context()
+	now := f.Start()
+	expiresAt := now.Add(s.cfg.SessionTokenDuration)
+
+	sql, args := psql.Update(
+		um.Table("auth.sessions"),
+		um.Set("expires_at").ToArg(expiresAt),
+		um.Where(psql.Quote("id").EQ(psql.Arg(id))),
+	).MustBuild()
+
+	res, err := s.db.Exec(ctx, sql, args...)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if res.RowsAffected() == 0 {
+		return time.Time{}, ErrSessionNotFound
+	}
+	return expiresAt, nil
 }

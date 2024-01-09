@@ -1,14 +1,12 @@
 package auth
 
 import (
-	"context"
 	"glut/common/flux"
 	"glut/common/sqlutil"
 	"glut/common/valid"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/im"
@@ -51,6 +49,8 @@ type DeleteUsersInput struct {
 }
 
 func (s *Service) Users(f *flux.Flow, uq *UserQuery) ([]User, error) {
+	ctx := f.Context()
+
 	var errs valid.Errors
 	if uq.ID != "" && !valid.IsUUID(uq.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
@@ -66,85 +66,6 @@ func (s *Service) Users(f *flux.Flow, uq *UserQuery) ([]User, error) {
 		uq.Offset = 0
 	}
 
-	users, err := queryUsers(f.Context(), s.db, uq)
-	if err != nil {
-		return nil, err
-	}
-	if uq.ID != "" && len(users) == 0 {
-		return nil, ErrUserNotFound
-	}
-	return users, nil
-}
-
-func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
-	var errs valid.Errors
-	if in.Username == "" {
-		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
-	}
-	if in.Email == "" {
-		errs = append(errs, valid.Error{Field: "email", Error: "Required."})
-	}
-	if in.Password == "" {
-		errs = append(errs, valid.Error{Field: "password", Error: "Required."})
-	}
-	if len(errs) != 0 {
-		return User{}, errs
-	}
-
-	ctx := f.Context()
-	now := f.Start()
-	exists, err := userExists(ctx, s.db, in.Username)
-	if err != nil {
-		return User{}, err
-	}
-	if exists {
-		return User{}, ErrUserExists
-	}
-
-	user, err := newUser(in.Username, in.Email, in.Password, now)
-	if err != nil {
-		return User{}, err
-	}
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return User{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	if err := saveUser(ctx, tx, user); err != nil {
-		return User{}, err
-	}
-	if err := s.createUserVerificationToken(ctx, tx, user.ID, now); err != nil {
-		return User{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return User{}, err
-	}
-	return user, nil
-}
-
-func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
-	var errs valid.Errors
-	if len(in.IDs) == 0 {
-		errs = append(errs, valid.Error{Field: "ids", Error: "Required."})
-	}
-	if !valid.IsUUIDSlice(in.IDs) {
-		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})
-	}
-	if len(errs) != 0 {
-		return 0, errs
-	}
-
-	count, err := deleteUsers(f.Context(), s.db, in)
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-func queryUsers(ctx context.Context, db sqlutil.DB, uq *UserQuery) ([]User, error) {
 	q := psql.Select(
 		sm.Columns(
 			"id",
@@ -177,82 +98,10 @@ func queryUsers(ctx context.Context, db sqlutil.DB, uq *UserQuery) ([]User, erro
 	}
 
 	sql, args := q.MustBuild()
-	rows, err := db.Query(ctx, sql, args...)
+	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
-	users, err := scanUsers(rows)
-	if err != nil {
-		return nil, err
-	}
-	return users, nil
-}
-
-func userExists(ctx context.Context, db sqlutil.DB, username string) (bool, error) {
-	q := `
-	SELECT
-	EXISTS (
-		SELECT id
-		FROM auth.users
-		WHERE username = $1
-	);`
-
-	var exists bool
-	if err := db.QueryRow(ctx, q, username).Scan(&exists); err != nil {
-		return false, err
-	}
-	return exists, nil
-}
-
-func saveUser(ctx context.Context, db sqlutil.DB, user User) error {
-	q := psql.Insert(
-		im.Into("auth.users",
-			"id", "username", "email", "password_hash", "created_at",
-		),
-		im.Values(psql.Arg(user.ID, user.Username, user.Email, user.Password, user.CreatedAt)),
-	)
-
-	sql, args := q.MustBuild()
-	if _, err := db.Exec(ctx, sql, args...); err != nil {
-		return err
-	}
-	return nil
-}
-
-func deleteUsers(ctx context.Context, db sqlutil.DB, in *DeleteUsersInput) (int, error) {
-	q := psql.Delete(dm.From("auth.users"))
-	if in.IDs != nil {
-		q.Apply(dm.Where(
-			psql.Quote("id").In(
-				psql.Arg(sqlutil.InSlice(in.IDs)...)),
-		))
-	}
-
-	sql, args := q.MustBuild()
-	res, err := db.Exec(ctx, sql, args...)
-	if err != nil {
-		return 0, err
-	}
-	return int(res.RowsAffected()), nil
-}
-
-func newUser(username, email, pass string, now time.Time) (User, error) {
-	passwordHash, err := hashPassword(pass)
-	if err != nil {
-		return User{}, nil
-	}
-
-	user := User{
-		ID:        uuid.New().String(),
-		Username:  username,
-		Email:     email,
-		Password:  passwordHash,
-		CreatedAt: now,
-	}
-	return user, nil
-}
-
-func scanUsers(rows pgx.Rows) ([]User, error) {
 	defer rows.Close()
 
 	var users []User
@@ -292,5 +141,110 @@ func scanUsers(rows pgx.Rows) ([]User, error) {
 			LastLoginIP: lastLoginIP,
 		})
 	}
+	if uq.ID != "" && len(users) == 0 {
+		return nil, ErrUserNotFound
+	}
 	return users, nil
+}
+
+func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
+	ctx := f.Context()
+	now := f.Start()
+
+	var errs valid.Errors
+	if in.Username == "" {
+		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
+	}
+	if in.Email == "" {
+		errs = append(errs, valid.Error{Field: "email", Error: "Required."})
+	}
+	if in.Password == "" {
+		errs = append(errs, valid.Error{Field: "password", Error: "Required."})
+	}
+	if len(errs) != 0 {
+		return User{}, errs
+	}
+
+	q := `
+	SELECT
+	EXISTS (
+		SELECT id
+		FROM auth.users
+		WHERE username = $1
+	);`
+
+	var exists bool
+	if err := s.db.QueryRow(ctx, q, in.Username).Scan(&exists); err != nil {
+		return User{}, err
+	}
+	if exists {
+		return User{}, ErrUserExists
+	}
+
+	passwordHash, err := hashPassword(in.Password)
+	if err != nil {
+		return User{}, nil
+	}
+	user := User{
+		ID:        uuid.New().String(),
+		Username:  in.Username,
+		Email:     in.Email,
+		Password:  passwordHash,
+		CreatedAt: now,
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	sql, args := psql.Insert(
+		im.Into("auth.users",
+			"id", "username", "email", "password_hash", "created_at",
+		),
+		im.Values(psql.Arg(user.ID, user.Username, user.Email, user.Password, user.CreatedAt)),
+	).MustBuild()
+
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		return User{}, err
+	}
+	if err := s.createUserVerificationToken(ctx, tx, user.ID, now); err != nil {
+		return User{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
+	ctx := f.Context()
+
+	var errs valid.Errors
+	if len(in.IDs) == 0 {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Required."})
+	}
+	if !valid.IsUUIDSlice(in.IDs) {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})
+	}
+	if len(errs) != 0 {
+		return 0, errs
+	}
+
+	q := psql.Delete(dm.From("auth.users"))
+	if in.IDs != nil {
+		q.Apply(dm.Where(
+			psql.Quote("id").In(
+				psql.Arg(sqlutil.InSlice(in.IDs)...)),
+		))
+	}
+
+	sql, args := q.MustBuild()
+	res, err := s.db.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(res.RowsAffected()), nil
 }

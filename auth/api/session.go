@@ -82,11 +82,12 @@ func (a *API) ClearSessions(f *flux.Flow, r *ClearSessionsRequest) (*ClearSessio
 }
 
 func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) {
-	if f.Session() == nil {
+	sess := f.Session()
+	if sess == nil {
 		return nil, flux.UnauthorizedError
 	}
 	q := &auth.SessionQuery{
-		UserID: f.Session().User,
+		UserID: sess.User,
 	}
 	sessions, err := a.service.Sessions(f, q)
 	if err != nil {
@@ -111,12 +112,13 @@ func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) 
 }
 
 func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
-	if f.Session() == nil {
+	sess := f.Session()
+	if sess == nil {
 		return nil, flux.UnauthorizedError
 	}
 	in := &auth.ClearSessionInput{
 		IDs:    r.IDs,
-		UserID: f.Session().User,
+		UserID: sess.User,
 	}
 	count, err := a.service.ClearSessions(f, in)
 	if err != nil {
