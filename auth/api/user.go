@@ -113,6 +113,23 @@ func (a *API) MyUser(f *flux.Flow, _ flux.Empty) (*UserResponse, error) {
 	return res, nil
 }
 
+func (a *API) DeleteMyUser(f *flux.Flow, _ flux.Empty) (flux.Empty, error) {
+	if f.Session() == nil {
+		return nil, flux.UnauthorizedError
+	}
+	in := &auth.DeleteUsersInput{
+		IDs: []string{f.Session().User},
+	}
+	_, err := a.service.DeleteUsers(f, in)
+	if err != nil {
+		if verr, ok := err.(valid.Errors); ok {
+			return nil, flux.ValidationError(verr)
+		}
+		return nil, fmt.Errorf("api.DeleteMyUser: %w", err)
+	}
+	return nil, nil
+}
+
 type QueryUsersRequest struct {
 	ID     string `json:"id"`
 	Limit  int    `json:"limit"`

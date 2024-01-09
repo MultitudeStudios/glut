@@ -101,6 +101,35 @@ func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
 	return res, nil
 }
 
+func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) {
+	if f.Session() == nil {
+		return nil, flux.UnauthorizedError
+	}
+	q := &auth.SessionQuery{
+		UserID: f.Session().User,
+	}
+	sessions, err := a.service.Sessions(f, q)
+	if err != nil {
+		if verr, ok := err.(valid.Errors); ok {
+			return nil, flux.ValidationError(verr)
+		}
+		return nil, fmt.Errorf("api.MySessions: %w", err)
+	}
+
+	res := []SessionResponse{}
+	for _, sess := range sessions {
+		res = append(res, SessionResponse{
+			ID:        sess.ID,
+			Token:     sess.Token,
+			UserID:    sess.UserID,
+			UserIP:    sess.UserIP,
+			CreatedAt: sess.CreatedAt,
+			ExpiresAt: sess.ExpiresAt,
+		})
+	}
+	return res, nil
+}
+
 type QuerySessionsRequest struct {
 	ID             string `json:"id"`
 	Limit          int    `json:"limit"`
