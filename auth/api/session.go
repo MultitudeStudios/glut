@@ -81,26 +81,6 @@ func (a *API) ClearSessions(f *flux.Flow, r *ClearSessionsRequest) (*ClearSessio
 	return res, nil
 }
 
-func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
-	if f.Session() == nil {
-		return nil, flux.UnauthorizedError
-	}
-	in := &auth.ClearSessionInput{
-		IDs:    r.IDs,
-		UserID: f.Session().User,
-	}
-	count, err := a.service.ClearSessions(f, in)
-	if err != nil {
-		if verr, ok := err.(valid.Errors); ok {
-			return nil, flux.ValidationError(verr)
-		}
-		return nil, fmt.Errorf("api.Logout: %w", err)
-	}
-
-	res := &LogoutResponse{count}
-	return res, nil
-}
-
 func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) {
 	if f.Session() == nil {
 		return nil, flux.UnauthorizedError
@@ -127,6 +107,43 @@ func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) 
 			ExpiresAt: sess.ExpiresAt,
 		})
 	}
+	return res, nil
+}
+
+func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
+	if f.Session() == nil {
+		return nil, flux.UnauthorizedError
+	}
+	in := &auth.ClearSessionInput{
+		IDs:    r.IDs,
+		UserID: f.Session().User,
+	}
+	count, err := a.service.ClearSessions(f, in)
+	if err != nil {
+		if verr, ok := err.(valid.Errors); ok {
+			return nil, flux.ValidationError(verr)
+		}
+		return nil, fmt.Errorf("api.Logout: %w", err)
+	}
+
+	res := &LogoutResponse{count}
+	return res, nil
+}
+
+func (a *API) RenewSession(f *flux.Flow, _ flux.Empty) (*RenewSessionResponse, error) {
+	sess := f.Session()
+	if sess == nil {
+		return nil, flux.UnauthorizedError
+	}
+	expiresAt, err := a.service.RenewSession(f, sess.ID)
+	if err != nil {
+		if errors.Is(err, auth.ErrSessionNotFound) {
+			return nil, flux.UnauthorizedError
+		}
+		return nil, fmt.Errorf("api.RenewSession: %w", err)
+	}
+
+	res := &RenewSessionResponse{expiresAt}
 	return res, nil
 }
 
@@ -173,4 +190,8 @@ type LogoutRequest struct {
 
 type LogoutResponse struct {
 	Count int `json:"count"`
+}
+
+type RenewSessionResponse struct {
+	ExpiresAt time.Time `json:"expires_at"`
 }

@@ -25,6 +25,7 @@ func Handler(s *flux.Server, service *auth.Service) {
 	// Me API
 	flux.New(s, "auth.me.user", a.MyUser, &flux.Options{})
 	flux.New(s, "auth.me.deleteUser", a.DeleteMyUser, &flux.Options{})
-	flux.New(s, "auth.me.logout", a.Logout, &flux.Options{})
 	flux.New(s, "auth.me.sessions", a.MySessions, &flux.Options{})
+	flux.New(s, "auth.me.logout", a.Logout, &flux.Options{})
+	flux.New(s, "auth.me.renewSession", a.RenewSession, &flux.Options{})
 }

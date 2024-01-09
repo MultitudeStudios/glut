@@ -68,7 +68,9 @@ func (s *Service) Sessions(f *flux.Flow, sq *SessionQuery) ([]Session, error) {
 		sq.Offset = 0
 	}
 
-	sessions, err := querySessions(f, s.db, sq)
+	ctx := f.Context()
+	now := f.Start()
+	sessions, err := querySessions(ctx, s.db, sq, now)
 	if err != nil {
 		return nil, err
 	}
@@ -152,10 +154,16 @@ func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error
 	return count, nil
 }
 
-func querySessions(f *flux.Flow, db sqlutil.DB, sq *SessionQuery) ([]Session, error) {
+func (s *Service) RenewSession(f *flux.Flow, id string) (time.Time, error) {
 	ctx := f.Context()
-	now := f.Start()
+	expiresAt := f.Start().Add(s.cfg.SessionTokenDuration)
+	if err := updateSessionExpiresAt(ctx, s.db, id, expiresAt); err != nil {
+		return time.Time{}, err
+	}
+	return expiresAt, nil
+}
 
+func querySessions(ctx context.Context, db sqlutil.DB, sq *SessionQuery, now time.Time) ([]Session, error) {
 	q := psql.Select(
 		sm.Columns(
 			"id",
@@ -241,6 +249,23 @@ func deleteSessions(ctx context.Context, db sqlutil.DB, in *ClearSessionInput) (
 		return 0, err
 	}
 	return int(res.RowsAffected()), nil
+}
+
+func updateSessionExpiresAt(ctx context.Context, db sqlutil.DB, id string, expiresAt time.Time) error {
+	sql, args := psql.Update(
+		um.Table("auth.sessions"),
+		um.Set("expires_at").ToArg(expiresAt),
+		um.Where(psql.Quote("id").EQ(psql.Arg(id))),
+	).MustBuild()
+
+	res, err := db.Exec(ctx, sql, args...)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrSessionNotFound
+	}
+	return nil
 }
 
 func userForAuth(ctx context.Context, db sqlutil.DB, username string) (User, error) {
