@@ -254,10 +254,7 @@ func userForAuth(ctx context.Context, db sqlutil.DB, username string) (User, err
 	sql, args := q.MustBuild()
 	var userID string
 	var passwordHash string
-	if err := db.QueryRow(ctx, sql, args...).Scan(
-		&userID,
-		&passwordHash,
-	); err != nil {
+	if err := db.QueryRow(ctx, sql, args...).Scan(&userID, &passwordHash); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUserNotFound
 		}

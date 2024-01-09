@@ -126,6 +126,9 @@ func (s *Server) ConfigureServer(options *ServerOptions) {
 	if options.AuthTokenExtractor != nil {
 		s.authTokenExtractor = options.AuthTokenExtractor
 	}
+	if options.Authenticator != nil {
+		s.authenticator = options.Authenticator
+	}
 	if options.IPExtractor != nil {
 		s.ipExtractor = options.IPExtractor
 	}

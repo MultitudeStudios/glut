@@ -81,6 +81,26 @@ func (a *API) ClearSessions(f *flux.Flow, r *ClearSessionsRequest) (*ClearSessio
 	return res, nil
 }
 
+func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
+	if f.Session() == nil {
+		return nil, flux.UnauthorizedError
+	}
+	in := &auth.ClearSessionInput{
+		IDs:    r.IDs,
+		UserID: f.Session().User,
+	}
+	count, err := a.service.ClearSessions(f, in)
+	if err != nil {
+		if verr, ok := err.(valid.Errors); ok {
+			return nil, flux.ValidationError(verr)
+		}
+		return nil, fmt.Errorf("api.Logout: %w", err)
+	}
+
+	res := &LogoutResponse{count}
+	return res, nil
+}
+
 type QuerySessionsRequest struct {
 	ID             string `json:"id"`
 	Limit          int    `json:"limit"`
@@ -115,5 +135,13 @@ type ClearSessionsRequest struct {
 }
 
 type ClearSessionsResponse struct {
+	Count int `json:"count"`
+}
+
+type LogoutRequest struct {
+	IDs []string `json:"ids"`
+}
+
+type LogoutResponse struct {
 	Count int `json:"count"`
 }
