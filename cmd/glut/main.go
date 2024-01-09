@@ -74,6 +74,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		WriteTimeout:      cfg.Server.WriteTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
 		ShutdownTimeout:   cfg.Server.ShutdownTimeout,
+		Authenticator:     auth.NewAuthenticator(db),
 	})
 
 	authapi.Handler(s, auth.NewService(db, &auth.Config{}))

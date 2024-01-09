@@ -92,6 +92,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	}
 
 	ctx := f.Context()
+	now := f.Start()
 	exists, err := userExists(ctx, s.db, in.Username)
 	if err != nil {
 		return User{}, err
@@ -100,7 +101,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 		return User{}, ErrUserExists
 	}
 
-	user, err := newUser(f, in.Username, in.Email, in.Password)
+	user, err := newUser(in.Username, in.Email, in.Password, now)
 	if err != nil {
 		return User{}, err
 	}
@@ -114,7 +115,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	if err := saveUser(ctx, tx, user); err != nil {
 		return User{}, err
 	}
-	if err := s.createUserVerificationToken(f, tx, user.ID); err != nil {
+	if err := s.createUserVerificationToken(ctx, tx, user.ID, now); err != nil {
 		return User{}, err
 	}
 
@@ -235,7 +236,7 @@ func deleteUsers(ctx context.Context, db sqlutil.DB, in *DeleteUsersInput) (int,
 	return int(res.RowsAffected()), nil
 }
 
-func newUser(f *flux.Flow, username, email, pass string) (User, error) {
+func newUser(username, email, pass string, now time.Time) (User, error) {
 	passwordHash, err := hashPassword(pass)
 	if err != nil {
 		return User{}, nil
@@ -246,7 +247,7 @@ func newUser(f *flux.Flow, username, email, pass string) (User, error) {
 		Username:  username,
 		Email:     email,
 		Password:  passwordHash,
-		CreatedAt: f.Start(),
+		CreatedAt: now,
 	}
 	return user, nil
 }

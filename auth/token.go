@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"glut/common/flux"
 	"glut/common/sqlutil"
 	"time"
 
@@ -21,18 +20,18 @@ type Token struct {
 
 type TokenMeta map[string]*string
 
-func (s *Service) createUserVerificationToken(f *flux.Flow, db sqlutil.DB, userID string) error {
-	token, err := newToken(f, userID, s.cfg.VerificationTokenLength, s.cfg.VerificationTokenDuration, nil)
+func (s *Service) createUserVerificationToken(ctx context.Context, db sqlutil.DB, userID string, now time.Time) error {
+	token, err := newToken(userID, now, s.cfg.VerificationTokenLength, s.cfg.VerificationTokenDuration, nil)
 	if err != nil {
 		return err
 	}
-	if err := saveToken(f.Context(), db, token); err != nil {
+	if err := saveToken(ctx, db, token); err != nil {
 		return err
 	}
 	return nil
 }
 
-func newToken(f *flux.Flow, userID string, length int, duration time.Duration, meta *TokenMeta) (Token, error) {
+func newToken(userID string, now time.Time, length int, duration time.Duration, meta *TokenMeta) (Token, error) {
 	id, err := generateToken(length)
 	if err != nil {
 		return Token{}, err
@@ -41,8 +40,8 @@ func newToken(f *flux.Flow, userID string, length int, duration time.Duration, m
 	token := Token{
 		ID:        id,
 		UserID:    userID,
-		CreatedAt: f.Start(),
-		ExpiresAt: f.Start().Add(duration),
+		CreatedAt: now,
+		ExpiresAt: now.Add(duration),
 		Meta:      meta,
 	}
 	return token, nil
