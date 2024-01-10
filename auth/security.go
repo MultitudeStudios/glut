@@ -31,20 +31,20 @@ type BanQuery struct {
 	IncludeExpired bool
 }
 
-func (s *Service) Bans(f *flux.Flow, bq *BanQuery) ([]Ban, error) {
+func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 	var errs valid.Errors
-	if bq.UserID != "" && !valid.IsUUID(bq.UserID) {
+	if in.UserID != "" && !valid.IsUUID(in.UserID) {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
 	}
 	if len(errs) != 0 {
 		return nil, errs
 	}
 
-	if bq.Limit <= 0 || bq.Limit > maxBanQueryLimit {
-		bq.Limit = defaultBanQueryLimit
+	if in.Limit <= 0 || in.Limit > maxBanQueryLimit {
+		in.Limit = defaultBanQueryLimit
 	}
-	if bq.Offset < 0 {
-		bq.Offset = 0
+	if in.Offset < 0 {
+		in.Offset = 0
 	}
 
 	q := psql.Select(
@@ -59,24 +59,24 @@ func (s *Service) Bans(f *flux.Flow, bq *BanQuery) ([]Ban, error) {
 		),
 		sm.From("auth.bans"),
 	)
-	if bq.UserID != "" {
+	if in.UserID != "" {
 		q.Apply(
-			sm.Where(psql.Quote("user_id").EQ(psql.Arg(bq.UserID))),
+			sm.Where(psql.Quote("user_id").EQ(psql.Arg(in.UserID))),
 		)
 	}
-	if !bq.IncludeExpired {
+	if !in.IncludeExpired {
 		q.Apply(
 			sm.Where(psql.Quote("unbanned_at").GT(psql.Arg(f.Time))),
 		)
 	}
-	if bq.Limit != 0 {
+	if in.Limit != 0 {
 		q.Apply(
-			sm.Limit(bq.Limit),
+			sm.Limit(in.Limit),
 		)
 	}
-	if bq.Offset != 0 {
+	if in.Offset != 0 {
 		q.Apply(
-			sm.Offset(bq.Offset),
+			sm.Offset(in.Offset),
 		)
 	}
 	sql, args := q.MustBuild()
@@ -118,7 +118,7 @@ func (s *Service) Bans(f *flux.Flow, bq *BanQuery) ([]Ban, error) {
 			UpdatedBy:  updatedBy,
 		})
 	}
-	if bq.UserID != "" && len(bans) == 0 {
+	if in.UserID != "" && len(bans) == 0 {
 		return nil, ErrBanNotFound
 	}
 	return bans, nil
