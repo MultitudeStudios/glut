@@ -145,8 +145,6 @@ func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 }
 
 func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
-	ctx := f.Ctx
-
 	var errs valid.Errors
 	if in.Username == "" {
 		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
@@ -168,7 +166,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	);`
 
 	var exists bool
-	if err := s.db.QueryRow(ctx, q, in.Username).Scan(&exists); err != nil {
+	if err := s.db.QueryRow(f.Ctx, q, in.Username).Scan(&exists); err != nil {
 		return User{}, err
 	}
 	if exists {
@@ -187,11 +185,11 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 		CreatedAt: f.Time,
 	}
 
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.db.Begin(f.Ctx)
 	if err != nil {
 		return User{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(f.Ctx)
 
 	sql, args := psql.Insert(
 		im.Into("auth.users",
@@ -200,14 +198,14 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 		im.Values(psql.Arg(user.ID, user.Username, user.Email, user.Password, user.CreatedAt)),
 	).MustBuild()
 
-	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 		return User{}, err
 	}
 	if err := s.createUserVerificationToken(f, tx, user.ID); err != nil {
 		return User{}, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(f.Ctx); err != nil {
 		return User{}, err
 	}
 	return user, nil
