@@ -11,15 +11,17 @@ import (
 )
 
 func (a *API) QueryUsers(f *flux.Flow, r *QueryUsersRequest) ([]UserResponse, error) {
-	q := &auth.UserQuery{
+	users, err := a.service.Users(f, &auth.UserQuery{
 		ID:     r.ID,
 		Limit:  r.Limit,
 		Offset: r.Offset,
-	}
-	users, err := a.service.Users(f, q)
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
+		}
+		if errors.Is(err, auth.ErrUserNotFound) {
+			return nil, flux.NotFoundError("User not found.")
 		}
 		return nil, fmt.Errorf("api.QueryUsers: %w", err)
 	}
@@ -42,12 +44,11 @@ func (a *API) QueryUsers(f *flux.Flow, r *QueryUsersRequest) ([]UserResponse, er
 }
 
 func (a *API) CreateUser(f *flux.Flow, r *CreateUserRequest) (*UserResponse, error) {
-	in := &auth.NewUserInput{
+	user, err := a.service.CreateUser(f, &auth.NewUserInput{
 		Username: r.Username,
 		Email:    r.Email,
 		Password: r.Password,
-	}
-	user, err := a.service.CreateUser(f, in)
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -68,10 +69,9 @@ func (a *API) CreateUser(f *flux.Flow, r *CreateUserRequest) (*UserResponse, err
 }
 
 func (a *API) DeleteUsers(f *flux.Flow, r *DeleteUsersRequest) (*DeleteUsersResponse, error) {
-	in := &auth.DeleteUsersInput{
+	count, err := a.service.DeleteUsers(f, &auth.DeleteUsersInput{
 		IDs: r.IDs,
-	}
-	count, err := a.service.DeleteUsers(f, in)
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -84,14 +84,9 @@ func (a *API) DeleteUsers(f *flux.Flow, r *DeleteUsersRequest) (*DeleteUsersResp
 }
 
 func (a *API) MyUser(f *flux.Flow, _ flux.Empty) (*UserResponse, error) {
-	sess := f.Session()
-	if sess == nil {
-		return nil, flux.UnauthorizedError
-	}
-	q := &auth.UserQuery{
-		ID: sess.User,
-	}
-	users, err := a.service.Users(f, q)
+	users, err := a.service.Users(f, &auth.UserQuery{
+		ID: f.Session.User,
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -114,14 +109,9 @@ func (a *API) MyUser(f *flux.Flow, _ flux.Empty) (*UserResponse, error) {
 }
 
 func (a *API) DeleteMyUser(f *flux.Flow, _ flux.Empty) (flux.Empty, error) {
-	sess := f.Session()
-	if sess == nil {
-		return nil, flux.UnauthorizedError
-	}
-	in := &auth.DeleteUsersInput{
-		IDs: []string{sess.User},
-	}
-	_, err := a.service.DeleteUsers(f, in)
+	_, err := a.service.DeleteUsers(f, &auth.DeleteUsersInput{
+		IDs: []string{f.Session.User},
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)

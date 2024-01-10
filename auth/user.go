@@ -45,25 +45,23 @@ type NewUserInput struct {
 }
 
 type DeleteUsersInput struct {
-	IDs []string `json:"ids"`
+	IDs []string
 }
 
-func (s *Service) Users(f *flux.Flow, uq *UserQuery) ([]User, error) {
-	ctx := f.Context()
-
+func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 	var errs valid.Errors
-	if uq.ID != "" && !valid.IsUUID(uq.ID) {
+	if in.ID != "" && !valid.IsUUID(in.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
 	}
 	if len(errs) != 0 {
 		return nil, errs
 	}
 
-	if uq.Limit <= 0 || uq.Limit > maxUserQueryLimit {
-		uq.Limit = defaultUserQueryLimit
+	if in.Limit <= 0 || in.Limit > maxUserQueryLimit {
+		in.Limit = defaultUserQueryLimit
 	}
-	if uq.Offset < 0 {
-		uq.Offset = 0
+	if in.Offset < 0 {
+		in.Offset = 0
 	}
 
 	q := psql.Select(
@@ -80,25 +78,24 @@ func (s *Service) Users(f *flux.Flow, uq *UserQuery) ([]User, error) {
 		),
 		sm.From("auth.users"),
 	)
-
-	if uq.ID != "" {
+	if in.ID != "" {
 		q.Apply(
-			sm.Where(psql.Quote("id").EQ(psql.Arg(uq.ID))),
+			sm.Where(psql.Quote("id").EQ(psql.Arg(in.ID))),
 		)
 	}
-	if uq.Limit != 0 {
+	if in.Limit != 0 {
 		q.Apply(
-			sm.Limit(uq.Limit),
+			sm.Limit(in.Limit),
 		)
 	}
-	if uq.Offset != 0 {
+	if in.Offset != 0 {
 		q.Apply(
-			sm.Offset(uq.Offset),
+			sm.Offset(in.Offset),
 		)
 	}
-
 	sql, args := q.MustBuild()
-	rows, err := s.db.Query(ctx, sql, args...)
+
+	rows, err := s.db.Query(f.Ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -141,15 +138,14 @@ func (s *Service) Users(f *flux.Flow, uq *UserQuery) ([]User, error) {
 			LastLoginIP: lastLoginIP,
 		})
 	}
-	if uq.ID != "" && len(users) == 0 {
+	if in.ID != "" && len(users) == 0 {
 		return nil, ErrUserNotFound
 	}
 	return users, nil
 }
 
 func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
-	ctx := f.Context()
-	now := f.Start()
+	ctx := f.Ctx
 
 	var errs valid.Errors
 	if in.Username == "" {
@@ -168,9 +164,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	q := `
 	SELECT
 	EXISTS (
-		SELECT id
-		FROM auth.users
-		WHERE username = $1
+		SELECT id FROM auth.users WHERE username = $1
 	);`
 
 	var exists bool
@@ -190,7 +184,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 		Username:  in.Username,
 		Email:     in.Email,
 		Password:  passwordHash,
-		CreatedAt: now,
+		CreatedAt: f.Time,
 	}
 
 	tx, err := s.db.Begin(ctx)
@@ -209,7 +203,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	if _, err := tx.Exec(ctx, sql, args...); err != nil {
 		return User{}, err
 	}
-	if err := s.createUserVerificationToken(ctx, tx, user.ID, now); err != nil {
+	if err := s.createUserVerificationToken(f, tx, user.ID); err != nil {
 		return User{}, err
 	}
 
@@ -220,8 +214,6 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 }
 
 func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
-	ctx := f.Context()
-
 	var errs valid.Errors
 	if len(in.IDs) == 0 {
 		errs = append(errs, valid.Error{Field: "ids", Error: "Required."})
@@ -240,9 +232,9 @@ func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
 				psql.Arg(sqlutil.InSlice(in.IDs)...)),
 		))
 	}
-
 	sql, args := q.MustBuild()
-	res, err := s.db.Exec(ctx, sql, args...)
+
+	res, err := s.db.Exec(f.Ctx, sql, args...)
 	if err != nil {
 		return 0, err
 	}

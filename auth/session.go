@@ -19,6 +19,7 @@ import (
 const (
 	defaultSessionQueryLimit = 20
 	maxSessionQueryLimit     = 100
+	maxSessionsPerUser       = 10
 )
 
 type Session struct {
@@ -48,26 +49,23 @@ type ClearSessionInput struct {
 	UserID string
 }
 
-func (s *Service) Sessions(f *flux.Flow, sq *SessionQuery) ([]Session, error) {
-	ctx := f.Context()
-	now := f.Start()
-
+func (s *Service) Sessions(f *flux.Flow, in *SessionQuery) ([]Session, error) {
 	var errs valid.Errors
-	if sq.ID != "" && !valid.IsUUID(sq.ID) {
+	if in.ID != "" && !valid.IsUUID(in.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
 	}
-	if sq.UserID != "" && !valid.IsUUID(sq.UserID) {
+	if in.UserID != "" && !valid.IsUUID(in.UserID) {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
 	}
 	if len(errs) != 0 {
 		return nil, errs
 	}
 
-	if sq.Limit <= 0 || sq.Limit > maxSessionQueryLimit {
-		sq.Limit = defaultSessionQueryLimit
+	if in.Limit <= 0 || in.Limit > maxSessionQueryLimit {
+		in.Limit = defaultSessionQueryLimit
 	}
-	if sq.Offset < 0 {
-		sq.Offset = 0
+	if in.Offset < 0 {
+		in.Offset = 0
 	}
 
 	q := psql.Select(
@@ -81,34 +79,34 @@ func (s *Service) Sessions(f *flux.Flow, sq *SessionQuery) ([]Session, error) {
 		),
 		sm.From("auth.sessions"),
 	)
-	if sq.ID != "" {
+	if in.ID != "" {
 		q.Apply(
-			sm.Where(psql.Quote("id").EQ(psql.Arg(sq.ID))),
+			sm.Where(psql.Quote("id").EQ(psql.Arg(in.ID))),
 		)
 	}
-	if sq.UserID != "" {
+	if in.UserID != "" {
 		q.Apply(
-			sm.Where(psql.Quote("user_id").EQ(psql.Arg(sq.UserID))),
+			sm.Where(psql.Quote("user_id").EQ(psql.Arg(in.UserID))),
 		)
 	}
-	if !sq.IncludeExpired {
+	if !in.IncludeExpired {
 		q.Apply(
-			sm.Where(psql.Quote("expires_at").GT(psql.Arg(now))),
+			sm.Where(psql.Quote("expires_at").GT(psql.Arg(f.Time))),
 		)
 	}
-	if sq.Limit != 0 {
+	if in.Limit != 0 {
 		q.Apply(
-			sm.Limit(sq.Limit),
+			sm.Limit(in.Limit),
 		)
 	}
-	if sq.Offset != 0 {
+	if in.Offset != 0 {
 		q.Apply(
-			sm.Offset(sq.Offset),
+			sm.Offset(in.Offset),
 		)
 	}
-
 	sql, args := q.MustBuild()
-	rows, err := s.db.Query(ctx, sql, args...)
+
+	rows, err := s.db.Query(f.Ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -142,21 +140,20 @@ func (s *Service) Sessions(f *flux.Flow, sq *SessionQuery) ([]Session, error) {
 			ExpiresAt: expiresAt,
 		})
 	}
-	if sq.ID != "" && len(sessions) == 0 {
+	if in.ID != "" && len(sessions) == 0 {
 		return nil, ErrSessionNotFound
 	}
 	return sessions, nil
 }
 
-func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, error) {
-	ctx := f.Context()
-	now := f.Start()
+func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) {
+	ctx := f.Ctx
 
 	var errs valid.Errors
-	if creds.Username == "" {
+	if in.Username == "" {
 		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
 	}
-	if creds.Password == "" {
+	if in.Password == "" {
 		errs = append(errs, valid.Error{Field: "password", Error: "Required."})
 	}
 	if len(errs) != 0 {
@@ -172,7 +169,7 @@ func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, erro
 	sql, args := psql.Select(
 		sm.From("auth.users"),
 		sm.Columns("id", "password_hash"),
-		sm.Where(psql.Quote("username").EQ(psql.Arg(creds.Username))),
+		sm.Where(psql.Quote("username").EQ(psql.Arg(in.Username))),
 		sm.ForNoKeyUpdate(),
 	).MustBuild()
 
@@ -185,9 +182,35 @@ func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, erro
 		return Session{}, err
 	}
 
-	if err := validatePassword(passwordHash, creds.Password, s.cfg.PasswordChecker); err != nil {
+	if err := validatePassword(passwordHash, in.Password, s.cfg.PasswordChecker); err != nil {
 		if errors.Is(err, ErrInvalidPassword) {
 			return Session{}, ErrInvalidCredentials
+		}
+		return Session{}, err
+	}
+
+	q := `SELECT COUNT(id) FROM auth.sessions WHERE user_id = $1;`
+
+	var sessCount int
+	if err := tx.QueryRow(ctx, q, userID).Scan(&sessCount); err != nil {
+		return Session{}, err
+	}
+	if sessCount >= maxSessionsPerUser {
+		return Session{}, ErrSessionLimit
+	}
+
+	q = `
+	SELECT session_number FROM generate_series (1,$1) session_number
+	EXCEPT (
+		SELECT session_number FROM auth.sessions WHERE user_id = $2
+	)
+	ORDER BY 1
+	LIMIT 1;`
+
+	var nextSessNum int
+	if err := tx.QueryRow(ctx, q, maxSessionsPerUser, userID).Scan(&nextSessNum); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Session{}, ErrSessionLimit
 		}
 		return Session{}, err
 	}
@@ -196,20 +219,21 @@ func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, erro
 	if err != nil {
 		return Session{}, err
 	}
+
 	sess := Session{
 		ID:        uuid.New().String(),
 		Token:     token,
 		UserID:    userID,
-		UserIP:    f.IP(),
-		CreatedAt: now,
-		ExpiresAt: now.Add(s.cfg.SessionTokenDuration),
+		UserIP:    f.IP,
+		CreatedAt: f.Time,
+		ExpiresAt: f.Time.Add(s.cfg.SessionTokenDuration),
 	}
 
 	sql, args = psql.Insert(
 		im.Into("auth.sessions",
-			"id", "token", "user_id", "user_ip", "created_at", "expires_at",
+			"id", "token", "user_id", "user_ip", "session_number", "created_at", "expires_at",
 		),
-		im.Values(psql.Arg(sess.ID, sess.Token, sess.UserID, sess.UserIP, sess.CreatedAt, sess.ExpiresAt)),
+		im.Values(psql.Arg(sess.ID, sess.Token, sess.UserID, sess.UserIP, nextSessNum, sess.CreatedAt, sess.ExpiresAt)),
 	).MustBuild()
 
 	if _, err := tx.Exec(ctx, sql, args...); err != nil {
@@ -218,8 +242,8 @@ func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, erro
 
 	sql, args = psql.Update(
 		um.Table("auth.users"),
-		um.Set("last_login_at").ToArg(f.Start()),
-		um.Set("last_login_ip").ToArg(f.IP()),
+		um.Set("last_login_at").ToArg(f.Time),
+		um.Set("last_login_ip").ToArg(f.IP),
 		um.Where(psql.Quote("id").EQ(psql.Arg(userID))),
 	).MustBuild()
 
@@ -231,12 +255,9 @@ func (s *Service) CreateSession(f *flux.Flow, creds *Credentials) (Session, erro
 		return Session{}, err
 	}
 	return sess, nil
-
 }
 
 func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error) {
-	ctx := f.Context()
-
 	var errs valid.Errors
 	if len(in.IDs) == 0 && in.UserID == "" {
 		errs = append(errs, valid.Error{Error: "Input cannot be empty."})
@@ -265,30 +286,28 @@ func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error
 	}
 
 	sql, args := q.MustBuild()
-	res, err := s.db.Exec(ctx, sql, args...)
+	res, err := s.db.Exec(f.Ctx, sql, args...)
 	if err != nil {
 		return 0, err
 	}
 	return int(res.RowsAffected()), nil
 }
 
-func (s *Service) RenewSession(f *flux.Flow, id string) (time.Time, error) {
-	ctx := f.Context()
-	now := f.Start()
-	expiresAt := now.Add(s.cfg.SessionTokenDuration)
+func (s *Service) RenewSession(f *flux.Flow) (time.Time, error) {
+	newExpiry := f.Time.Add(s.cfg.SessionTokenDuration)
 
 	sql, args := psql.Update(
 		um.Table("auth.sessions"),
-		um.Set("expires_at").ToArg(expiresAt),
-		um.Where(psql.Quote("id").EQ(psql.Arg(id))),
+		um.Set("expires_at").ToArg(newExpiry),
+		um.Where(psql.Quote("id").EQ(psql.Arg(f.Session.ID))),
 	).MustBuild()
 
-	res, err := s.db.Exec(ctx, sql, args...)
+	res, err := s.db.Exec(f.Ctx, sql, args...)
 	if err != nil {
 		return time.Time{}, err
 	}
 	if res.RowsAffected() == 0 {
 		return time.Time{}, ErrSessionNotFound
 	}
-	return expiresAt, nil
+	return newExpiry, nil
 }

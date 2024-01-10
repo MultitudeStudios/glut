@@ -20,13 +20,16 @@ var (
 	minVerificationTokenDuration     = 30 * time.Minute
 	maxVerificationTokenDuration     = 72 * time.Hour
 	defaultVerificationTokenDuration = 24 * time.Hour
+	verificationTokenWaitPeriod      = 5 * time.Minute
 )
 
+// Service...
 type Service struct {
 	cfg *Config
 	db  *pgxpool.Pool
 }
 
+// Config...
 type Config struct {
 	// SessionTokenLength...
 	SessionTokenLength int
@@ -40,6 +43,7 @@ type Config struct {
 	PasswordChecker PasswordCompareFunc
 }
 
+// NewService...
 func NewService(db *pgxpool.Pool, cfg *Config) *Service {
 	if cfg.PasswordChecker == nil {
 		cfg.PasswordChecker = defaultPasswordFunc

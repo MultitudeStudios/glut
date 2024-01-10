@@ -11,14 +11,13 @@ import (
 )
 
 func (a *API) QuerySessions(f *flux.Flow, r *QuerySessionsRequest) ([]SessionResponse, error) {
-	q := &auth.SessionQuery{
+	sessions, err := a.service.Sessions(f, &auth.SessionQuery{
 		ID:             r.ID,
 		Limit:          r.Limit,
 		Offset:         r.Offset,
 		UserID:         r.UserID,
 		IncludeExpired: r.IncludeExpired,
-	}
-	sessions, err := a.service.Sessions(f, q)
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -41,17 +40,19 @@ func (a *API) QuerySessions(f *flux.Flow, r *QuerySessionsRequest) ([]SessionRes
 }
 
 func (a *API) CreateSession(f *flux.Flow, r *CreateSessionRequest) (*CreateSessionResponse, error) {
-	creds := &auth.Credentials{
+	sess, err := a.service.CreateSession(f, &auth.Credentials{
 		Username: r.Username,
 		Password: r.Password,
-	}
-	sess, err := a.service.CreateSession(f, creds)
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
 		}
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			return nil, flux.NewError("invalid_credentials", http.StatusUnauthorized, "Invalid credentials.")
+		}
+		if errors.Is(err, auth.ErrSessionLimit) {
+			return nil, flux.NewError("session_limit", http.StatusConflict, "Session limit reached.")
 		}
 		return nil, err
 	}
@@ -65,11 +66,10 @@ func (a *API) CreateSession(f *flux.Flow, r *CreateSessionRequest) (*CreateSessi
 }
 
 func (a *API) ClearSessions(f *flux.Flow, r *ClearSessionsRequest) (*ClearSessionsResponse, error) {
-	in := &auth.ClearSessionInput{
+	count, err := a.service.ClearSessions(f, &auth.ClearSessionInput{
 		IDs:    r.IDs,
 		UserID: r.UserID,
-	}
-	count, err := a.service.ClearSessions(f, in)
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -82,14 +82,9 @@ func (a *API) ClearSessions(f *flux.Flow, r *ClearSessionsRequest) (*ClearSessio
 }
 
 func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) {
-	sess := f.Session()
-	if sess == nil {
-		return nil, flux.UnauthorizedError
-	}
-	q := &auth.SessionQuery{
-		UserID: sess.User,
-	}
-	sessions, err := a.service.Sessions(f, q)
+	sessions, err := a.service.Sessions(f, &auth.SessionQuery{
+		UserID: f.Session.User,
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -112,15 +107,10 @@ func (a *API) MySessions(f *flux.Flow, _ flux.Empty) ([]SessionResponse, error) 
 }
 
 func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
-	sess := f.Session()
-	if sess == nil {
-		return nil, flux.UnauthorizedError
-	}
-	in := &auth.ClearSessionInput{
+	count, err := a.service.ClearSessions(f, &auth.ClearSessionInput{
 		IDs:    r.IDs,
-		UserID: sess.User,
-	}
-	count, err := a.service.ClearSessions(f, in)
+		UserID: f.Session.User,
+	})
 	if err != nil {
 		if verr, ok := err.(valid.Errors); ok {
 			return nil, flux.ValidationError(verr)
@@ -133,11 +123,7 @@ func (a *API) Logout(f *flux.Flow, r *LogoutRequest) (*LogoutResponse, error) {
 }
 
 func (a *API) RenewSession(f *flux.Flow, _ flux.Empty) (*RenewSessionResponse, error) {
-	sess := f.Session()
-	if sess == nil {
-		return nil, flux.UnauthorizedError
-	}
-	expiresAt, err := a.service.RenewSession(f, sess.ID)
+	newExpiry, err := a.service.RenewSession(f)
 	if err != nil {
 		if errors.Is(err, auth.ErrSessionNotFound) {
 			return nil, flux.UnauthorizedError
@@ -145,7 +131,7 @@ func (a *API) RenewSession(f *flux.Flow, _ flux.Empty) (*RenewSessionResponse, e
 		return nil, fmt.Errorf("api.RenewSession: %w", err)
 	}
 
-	res := &RenewSessionResponse{expiresAt}
+	res := &RenewSessionResponse{newExpiry}
 	return res, nil
 }
 

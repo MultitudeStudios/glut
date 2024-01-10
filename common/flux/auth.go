@@ -1,19 +1,15 @@
 package flux
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 )
 
-// ErrInvalidAuthToken...
-var ErrInvalidAuthToken = errors.New("invalid auth token")
-
 // Session...
 type Session struct {
-	ID          string
-	User        string
-	Permissions []string
+	ID   string
+	IP   string
+	User string
 }
 
 // Authenticator...

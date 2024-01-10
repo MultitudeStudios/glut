@@ -13,23 +13,20 @@ import (
 // NewAuthenticator...
 func NewAuthenticator(db *pgxpool.Pool) flux.Authenticator {
 	return func(f *flux.Flow, token string) (*flux.Session, error) {
-		ctx := f.Context()
-		now := f.Start()
-
 		sql, args := psql.Select(
 			sm.From("auth.sessions"),
 			sm.Columns("id", "user_id"),
 			psql.WhereAnd(
 				sm.Where(psql.Quote("token").EQ(psql.Arg(token))),
-				sm.Where(psql.Quote("expires_at").GT(psql.Arg(now))),
+				sm.Where(psql.Quote("expires_at").GT(psql.Arg(f.Time))),
 			),
 		).MustBuild()
 
 		var id string
 		var userID string
-		if err := db.QueryRow(ctx, sql, args...).Scan(&id, &userID); err != nil {
+		if err := db.QueryRow(f.Ctx, sql, args...).Scan(&id, &userID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, flux.ErrInvalidAuthToken
+				return nil, flux.UnauthorizedError
 			}
 			return nil, err
 		}

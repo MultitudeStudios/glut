@@ -26,12 +26,26 @@ var (
 			Message: fmt.Sprintf(format, args...),
 		}
 	}
+	NotFoundError = func(message string) *Error {
+		return &Error{
+			Code:    "not_found",
+			Status:  http.StatusNotFound,
+			Message: message,
+		}
+	}
 	ValidationError = func(errs any) *Error {
 		return &Error{
 			Code:    "validation",
 			Status:  http.StatusBadRequest,
 			Message: "A validation error occurred.",
 			Errors:  errs,
+		}
+	}
+	TryLaterError = func(message string) *Error {
+		return &Error{
+			Code:    "try_later",
+			Status:  http.StatusConflict,
+			Message: message,
 		}
 	}
 )
@@ -64,7 +78,7 @@ func (s *Server) handleError(f *Flow, err error) {
 	e, ok := err.(*Error)
 	if !ok {
 		e = InternalError
-		f.Logger().Error("An unexpected error occurred.", slog.String("error", err.Error()))
+		f.Logger.Error("An unexpected error occurred.", slog.String("error", err.Error()))
 	}
 
 	res := map[string]any{
@@ -84,6 +98,6 @@ func (s *Server) handleError(f *Flow, err error) {
 		}
 	}
 	if err := f.respond(e.Status, res); err != nil {
-		f.Logger().Error("Error writing response.", slog.String("error", err.Error()))
+		f.Logger.Error("Error writing response.", slog.String("error", err.Error()))
 	}
 }

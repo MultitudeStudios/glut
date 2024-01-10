@@ -1,18 +1,21 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
-	"glut/common/sqlutil"
+	"glut/common/flux"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 )
 
+const tokenKindVerifyUser = "verify_user"
+
 type Token struct {
 	ID        string
 	UserID    string
+	Kind      string
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	Meta      *TokenMeta
@@ -20,31 +23,30 @@ type Token struct {
 
 type TokenMeta map[string]*string
 
-func (s *Service) createUserVerificationToken(ctx context.Context, db sqlutil.DB, userID string, now time.Time) error {
-	token, err := newToken(userID, now, s.cfg.VerificationTokenLength, s.cfg.VerificationTokenDuration, nil)
+func (s *Service) createUserVerificationToken(f *flux.Flow, tx pgx.Tx, userID string) error {
+	tokenID, err := generateToken(s.cfg.VerificationTokenLength)
 	if err != nil {
 		return err
-	}
-	if err := saveToken(ctx, db, token); err != nil {
-		return err
-	}
-	return nil
-}
-
-func newToken(userID string, now time.Time, length int, duration time.Duration, meta *TokenMeta) (Token, error) {
-	id, err := generateToken(length)
-	if err != nil {
-		return Token{}, err
 	}
 
 	token := Token{
-		ID:        id,
+		ID:        tokenID,
 		UserID:    userID,
-		CreatedAt: now,
-		ExpiresAt: now.Add(duration),
-		Meta:      meta,
+		Kind:      tokenKindVerifyUser,
+		CreatedAt: f.Time,
+		ExpiresAt: f.Time.Add(s.cfg.VerificationTokenDuration),
 	}
-	return token, nil
+
+	sql, args := psql.Insert(
+		im.Into("auth.tokens",
+			"id", "user_id", "kind", "created_at", "expires_at", "meta",
+		),
+		im.Values(psql.Arg(token.ID, token.UserID, token.Kind, token.CreatedAt, token.ExpiresAt, token.Meta)),
+		im.OnConflict("user_id", "kind").DoUpdate().SetExcluded("id", "created_at", "expires_at", "meta"),
+	).MustBuild()
+
+	_, err = tx.Exec(f.Ctx, sql, args...)
+	return err
 }
 
 const tokenChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -58,16 +60,4 @@ func generateToken(length int) (string, error) {
 		bytes[i] = tokenChars[b%byte(len(tokenChars))]
 	}
 	return string(bytes), nil
-}
-
-func saveToken(ctx context.Context, db sqlutil.DB, token Token) error {
-	sql, args := psql.Insert(
-		im.Into("auth.tokens",
-			"id", "user_id", "created_at", "expires_at", "meta",
-		),
-		im.Values(psql.Arg(token.ID, token.UserID, token.CreatedAt, token.ExpiresAt, token.Meta)),
-	).MustBuild()
-
-	_, err := db.Exec(ctx, sql, args...)
-	return err
 }

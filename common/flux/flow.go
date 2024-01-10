@@ -14,45 +14,23 @@ import (
 
 // Flow...
 type Flow struct {
-	r      *http.Request
-	w      *statusWriter
-	s      *Server
-	ctx    context.Context
-	logger *slog.Logger
-	id     string
-	ip     string
-	start  time.Time
-	sess   *Session
+	r       *http.Request
+	w       *statusWriter
+	s       *Server
+	Ctx     context.Context
+	Logger  *slog.Logger
+	ID      string
+	IP      string
+	Time    time.Time
+	Session *Session
 }
 
-// ID...
-func (f *Flow) ID() string {
-	return f.id
-}
-
-// IP...
-func (f *Flow) IP() string {
-	return f.ip
-}
-
-// Context...
-func (f *Flow) Context() context.Context {
-	return f.ctx
-}
-
-// Logger...
-func (f *Flow) Logger() *slog.Logger {
-	return f.logger
-}
-
-// Start...
-func (f *Flow) Start() time.Time {
-	return f.start
-}
-
-// Session...
-func (f *Flow) Session() *Session {
-	return f.sess
+// User...
+func (f *Flow) User() string {
+	if f.Session == nil {
+		return ""
+	}
+	return f.Session.User
 }
 
 // init...
@@ -63,9 +41,9 @@ func (f *Flow) init(w http.ResponseWriter, r *http.Request) {
 		f.w.reset(w)
 	}
 	ctx := r.Context()
-	start := time.Now().UTC()
 	id := uuid.New().String()
 	ip := f.s.ipExtractor(r)
+	now := time.Now().UTC()
 
 	logger := f.s.logger.With(
 		slog.String("request_path", r.URL.Path),
@@ -75,11 +53,12 @@ func (f *Flow) init(w http.ResponseWriter, r *http.Request) {
 	)
 
 	f.r = r
-	f.ctx = ctx
-	f.logger = logger
-	f.id = id
-	f.ip = ip
-	f.start = start
+	f.Ctx = ctx
+	f.Logger = logger
+	f.ID = id
+	f.IP = ip
+	f.Time = now
+	f.Session = nil
 }
 
 // bind...

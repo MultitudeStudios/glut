@@ -28,4 +28,11 @@ func Handler(s *flux.Server, service *auth.Service) {
 	flux.New(s, "auth.me.sessions", a.MySessions, &flux.Options{})
 	flux.New(s, "auth.me.logout", a.Logout, &flux.Options{})
 	flux.New(s, "auth.me.renewSession", a.RenewSession, &flux.Options{})
+
+	// Admin API
+	flux.New(s, "auth.admin.changePassword", a.ChangePassword, &flux.Options{})
+	flux.New(s, "auth.admin.verifyUser", a.VerifyUser, &flux.Options{})
+
+	// Security API
+	flux.New(s, "auth.security.bans", a.QueryBans, &flux.Options{})
 }

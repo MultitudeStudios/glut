@@ -1,7 +1,6 @@
 package flux
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -57,15 +56,15 @@ func (f *Flux[I, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if f.server.debug {
 		defer func() {
-			flow.Logger().With(
-				slog.Int64("elapsed_ms", time.Since(flow.Start()).Milliseconds()),
+			flow.Logger.With(
+				slog.Int64("elapsed_ms", time.Since(flow.Time).Milliseconds()),
 				slog.Int("http_status", flow.w.Status),
 			).Debug("Handled HTTP request.")
 		}()
 	}
 
 	// Set common headers.
-	w.Header().Set(HeaderXRequestID, flow.ID())
+	w.Header().Set(HeaderXRequestID, flow.ID)
 
 	// Set security headers.
 	if f.server.TLS {
@@ -88,21 +87,16 @@ func (f *Flux[I, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Attempt to authenticate request.
 	token := f.server.authTokenExtractor(r)
 	if token != "" {
-		sess, err := f.server.authenticator(flow, token)
+		session, err := f.server.authenticator(flow, token)
 		if err != nil {
-			switch {
-			case errors.Is(err, ErrInvalidAuthToken):
-				f.server.handleError(flow, UnauthorizedError)
-			default:
-				f.server.handleError(flow, err)
-			}
+			f.server.handleError(flow, err)
 			return
 		}
 		// TODO: rate limit requests using user ID
-		flow.sess = sess
+		flow.Session = session
 	}
 
-	if f.options.Authenticate && flow.Session() == nil {
+	if f.options.Authenticate && flow.Session == nil {
 		f.server.handleError(flow, UnauthorizedError)
 		return
 	}
@@ -129,6 +123,6 @@ func (f *Flux[I, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = flow.respond(f.options.SuccessStatus, out)
 	}
 	if err != nil {
-		flow.Logger().Error("Error writing HTTP response", slog.String("error", err.Error()))
+		flow.Logger.Error("Error writing HTTP response", slog.String("error", err.Error()))
 	}
 }
