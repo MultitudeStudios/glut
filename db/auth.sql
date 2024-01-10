@@ -57,9 +57,12 @@ CREATE TABLE auth.sessions (
   token text UNIQUE NOT NULL,
   user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
   user_ip text NOT NULL,
+  session_number int NOT NULL,
   created_at timestamptz NOT NULL,
   expires_at timestamptz NOT NULL,
-  CHECK (expires_at >= created_at)
+  CHECK (expires_at >= created_at),
+  UNIQUE (user_id, session_number),
+  CHECK (session_number BETWEEN 1 AND 10)
 );
 
 CREATE TABLE auth.session_roles (
@@ -71,13 +74,15 @@ CREATE TABLE auth.session_roles (
 CREATE TABLE auth.tokens (
   id text PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  kind text NOT NULL,
   created_at timestamptz NOT NULL,
   expires_at timestamptz NOT NULL,
   meta hstore,
+  UNIQUE (user_id, kind),
   CHECK (expires_at >= created_at)
 );
 
-CREATE TABLE auth.user_bans (
+CREATE TABLE auth.bans (
   user_id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   ban_reason text NOT NULL,
   banned_at timestamptz NOT NULL,
