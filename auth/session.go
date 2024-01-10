@@ -147,8 +147,6 @@ func (s *Service) Sessions(f *flux.Flow, in *SessionQuery) ([]Session, error) {
 }
 
 func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) {
-	ctx := f.Ctx
-
 	var errs valid.Errors
 	if in.Username == "" {
 		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
@@ -160,11 +158,11 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 		return Session{}, errs
 	}
 
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.db.Begin(f.Ctx)
 	if err != nil {
 		return Session{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(f.Ctx)
 
 	sql, args := psql.Select(
 		sm.From("auth.users"),
@@ -175,7 +173,7 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 
 	var userID string
 	var passwordHash string
-	if err := tx.QueryRow(ctx, sql, args...).Scan(&userID, &passwordHash); err != nil {
+	if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&userID, &passwordHash); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Session{}, ErrInvalidCredentials
 		}
@@ -192,7 +190,7 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 	q := `SELECT COUNT(id) FROM auth.sessions WHERE user_id = $1;`
 
 	var sessCount int
-	if err := tx.QueryRow(ctx, q, userID).Scan(&sessCount); err != nil {
+	if err := tx.QueryRow(f.Ctx, q, userID).Scan(&sessCount); err != nil {
 		return Session{}, err
 	}
 	if sessCount >= maxSessionsPerUser {
@@ -208,7 +206,7 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 	LIMIT 1;`
 
 	var nextSessNum int
-	if err := tx.QueryRow(ctx, q, maxSessionsPerUser, userID).Scan(&nextSessNum); err != nil {
+	if err := tx.QueryRow(f.Ctx, q, maxSessionsPerUser, userID).Scan(&nextSessNum); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Session{}, ErrSessionLimit
 		}
@@ -236,7 +234,7 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 		im.Values(psql.Arg(sess.ID, sess.Token, sess.UserID, sess.UserIP, nextSessNum, sess.CreatedAt, sess.ExpiresAt)),
 	).MustBuild()
 
-	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 		return Session{}, err
 	}
 
@@ -247,11 +245,11 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 		um.Where(psql.Quote("id").EQ(psql.Arg(userID))),
 	).MustBuild()
 
-	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 		return Session{}, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(f.Ctx); err != nil {
 		return Session{}, err
 	}
 	return sess, nil
