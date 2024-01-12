@@ -33,6 +33,7 @@ func NewAuthenticator(db *pgxpool.Pool) flux.Authenticator {
 
 		res := &flux.Session{
 			ID:   id,
+			IP:   f.IP,
 			User: userID,
 		}
 		return res, nil

@@ -37,6 +37,22 @@ func changePassword(s *auth.Service) flux.HandlerFunc {
 	}
 }
 
+func changeEmail(s *auth.Service) flux.HandlerFunc {
+	type request struct {
+		Token    string `json:"token"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	return func(f *flux.Flow) error {
+		var r request
+		if err := f.Bind(r); err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
 func verifyUser(s *auth.Service) flux.HandlerFunc {
 	type request struct {
 		Token string `json:"token"`
