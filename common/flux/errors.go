@@ -97,7 +97,5 @@ func (s *Server) handleError(f *Flow, err error) {
 			res["internal"] = err.Error()
 		}
 	}
-	if err := f.respond(e.Status, res); err != nil {
-		f.Logger.Error("Error writing response.", slog.String("error", err.Error()))
-	}
+	f.Respond(e.Status, res)
 }

@@ -25,6 +25,33 @@ type Flow struct {
 	Session *Session
 }
 
+// Bind...
+func (f *Flow) Bind(v any) error {
+	dec := json.NewDecoder(f.r.Body)
+	dec.DisallowUnknownFields()
+	err := dec.Decode(&v)
+	if ute, ok := err.(*json.UnmarshalTypeError); ok {
+		return InvalidError("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset).SetInternal(err)
+	} else if se, ok := err.(*json.SyntaxError); ok {
+		return InvalidError("Syntax error: offset=%v, error=%v", se.Offset, se.Error()).SetInternal(err)
+	} else if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return InvalidError("Invalid input.").SetInternal(err)
+	}
+	return err
+}
+
+// Respond...
+func (f *Flow) Respond(status int, v any) error {
+	if v == nil {
+		f.w.WriteHeader(status)
+		return nil
+	}
+
+	f.w.Header().Add(HeaderContentType, ContentTypeApplicationJSON)
+	f.w.WriteHeader(status)
+	return json.NewEncoder(f.w).Encode(v)
+}
+
 // User...
 func (f *Flow) User() string {
 	if f.Session == nil {
@@ -59,36 +86,6 @@ func (f *Flow) init(w http.ResponseWriter, r *http.Request) {
 	f.IP = ip
 	f.Time = now
 	f.Session = nil
-}
-
-// bind...
-func (f *Flow) bind(v any) error {
-	dec := json.NewDecoder(f.r.Body)
-	dec.DisallowUnknownFields()
-	err := dec.Decode(&v)
-	if ute, ok := err.(*json.UnmarshalTypeError); ok {
-		return InvalidError("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset).SetInternal(err)
-	} else if se, ok := err.(*json.SyntaxError); ok {
-		return InvalidError("Syntax error: offset=%v, error=%v", se.Offset, se.Error()).SetInternal(err)
-	} else if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return InvalidError("Invalid input.").SetInternal(err)
-	}
-	return err
-}
-
-// respond...
-func (f *Flow) respond(status int, v any) error {
-	if status == 0 {
-		status = http.StatusOK
-	}
-	if v == nil {
-		f.w.WriteHeader(status)
-		return nil
-	}
-
-	f.w.Header().Add(HeaderContentType, ContentTypeApplicationJSON)
-	f.w.WriteHeader(status)
-	return json.NewEncoder(f.w).Encode(v)
 }
 
 // statusWriter...

@@ -5,34 +5,28 @@ import (
 	"glut/common/flux"
 )
 
-type API struct {
-	service *auth.Service
-}
-
 func Handler(s *flux.Server, service *auth.Service) {
-	a := &API{service}
-
 	// Sessions API
-	flux.New(s, "auth.sessions.query", a.QuerySessions, &flux.Options{})
-	flux.New(s, "auth.sessions.create", a.CreateSession, &flux.Options{})
-	flux.New(s, "auth.sessions.clear", a.ClearSessions, &flux.Options{})
+	s.Handle("auth.sessions.query", querySessions(service), &flux.Options{})
+	s.Handle("auth.sessions.create", createSession(service), &flux.Options{})
+	s.Handle("auth.sessions.clear", clearSessions(service), &flux.Options{})
 
 	// Users API
-	flux.New(s, "auth.users.query", a.QueryUsers, &flux.Options{})
-	flux.New(s, "auth.users.create", a.CreateUser, &flux.Options{})
-	flux.New(s, "auth.users.delete", a.DeleteUsers, &flux.Options{})
+	s.Handle("auth.users.query", queryUsers(service), &flux.Options{})
+	s.Handle("auth.users.create", createUser(service), &flux.Options{})
+	s.Handle("auth.users.delete", deleteUsers(service), &flux.Options{})
 
 	// Me API
-	flux.New(s, "auth.me.user", a.MyUser, &flux.Options{})
-	flux.New(s, "auth.me.deleteUser", a.DeleteMyUser, &flux.Options{})
-	flux.New(s, "auth.me.sessions", a.MySessions, &flux.Options{})
-	flux.New(s, "auth.me.logout", a.Logout, &flux.Options{})
-	flux.New(s, "auth.me.renewSession", a.RenewSession, &flux.Options{})
+	s.Handle("auth.me.user", myUser(service), &flux.Options{})
+	s.Handle("auth.me.deleteUser", deleteMyUser(service), &flux.Options{})
+	s.Handle("auth.me.sessions", mySessions(service), &flux.Options{})
+	s.Handle("auth.me.logout", logout(service), &flux.Options{})
+	s.Handle("auth.me.renewSession", renewSession(service), &flux.Options{})
 
 	// Admin API
-	flux.New(s, "auth.admin.changePassword", a.ChangePassword, &flux.Options{})
-	flux.New(s, "auth.admin.verifyUser", a.VerifyUser, &flux.Options{})
+	s.Handle("auth.admin.changePassword", changePassword(service), &flux.Options{})
+	s.Handle("auth.admin.verifyUser", verifyUser(service), &flux.Options{})
 
 	// Security API
-	flux.New(s, "auth.security.bans", a.QueryBans, &flux.Options{})
+	s.Handle("auth.security.bans", queryBans(service), &flux.Options{})
 }

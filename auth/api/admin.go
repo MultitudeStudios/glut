@@ -9,48 +9,62 @@ import (
 	"net/http"
 )
 
-func (a *API) ChangePassword(f *flux.Flow, r *ChangePasswordRequest) (flux.Empty, error) {
-	if err := a.service.ChangePassword(f, &auth.ChangePasswordInput{
-		OldPassword: r.OldPassword,
-		NewPassword: r.NewPassword,
-	}); err != nil {
-		if verr, ok := err.(valid.Errors); ok {
-			return nil, flux.ValidationError(verr)
-		}
-		if errors.Is(err, auth.ErrInvalidPassword) {
-			return nil, flux.NewError("invalid_password", http.StatusForbidden, "Invalid password.")
-		}
-		return nil, fmt.Errorf("api.ChangePassword: %w", err)
+func changePassword(s *auth.Service) flux.HandlerFunc {
+	type request struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
 	}
-	return nil, nil
-}
 
-func (a *API) VerifyUser(f *flux.Flow, r *VerifyUserRequest) (flux.Empty, error) {
-	if err := a.service.VerifyUser(f, &auth.VerifyUserInput{
-		Token: r.Token,
-	}); err != nil {
-		if errors.Is(err, auth.ErrUnauthorized) {
-			return nil, flux.UnauthorizedError
+	return func(f *flux.Flow) error {
+		var r request
+		if err := f.Bind(r); err != nil {
+			return err
 		}
-		if errors.Is(err, auth.ErrInvalidToken) {
-			return nil, flux.NewError("invalid_token", http.StatusUnprocessableEntity, "Invalid token.")
+
+		if err := s.ChangePassword(f, &auth.ChangePasswordInput{
+			OldPassword: r.OldPassword,
+			NewPassword: r.NewPassword,
+		}); err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			if errors.Is(err, auth.ErrInvalidPassword) {
+				return flux.NewError("invalid_password", http.StatusForbidden, "Invalid password.")
+			}
+			return fmt.Errorf("api.changePassword: %w", err)
 		}
-		if errors.Is(err, auth.ErrUserVerified) {
-			return nil, flux.NewError("user_verified", http.StatusConflict, "User already verified.")
-		}
-		if errors.Is(err, auth.ErrTryLater) {
-			return nil, flux.TryLaterError("User verification was initiated recently. Try again later.")
-		}
-		return nil, fmt.Errorf("api.VerifyUser: %w", err)
+		return f.Respond(http.StatusOK, nil)
 	}
-	return nil, nil
 }
 
-type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password"`
-	NewPassword string `json:"new_password"`
-}
+func verifyUser(s *auth.Service) flux.HandlerFunc {
+	type request struct {
+		Token string `json:"token"`
+	}
 
-type VerifyUserRequest struct {
-	Token string `json:"token"`
+	return func(f *flux.Flow) error {
+		var r request
+		if err := f.Bind(r); err != nil {
+			return err
+		}
+
+		if err := s.VerifyUser(f, &auth.VerifyUserInput{
+			Token: r.Token,
+		}); err != nil {
+			if errors.Is(err, auth.ErrUnauthorized) {
+				return flux.UnauthorizedError
+			}
+			if errors.Is(err, auth.ErrInvalidToken) {
+				return flux.NewError("invalid_token", http.StatusUnprocessableEntity, "Invalid token.")
+			}
+			if errors.Is(err, auth.ErrUserVerified) {
+				return flux.NewError("user_verified", http.StatusConflict, "User already verified.")
+			}
+			if errors.Is(err, auth.ErrTryLater) {
+				return flux.TryLaterError("User verification was initiated recently. Try again later.")
+			}
+			return fmt.Errorf("api.verifyUser: %w", err)
+		}
+		return f.Respond(http.StatusOK, nil)
+	}
 }

@@ -7,10 +7,10 @@ import (
 )
 
 // Flux...
-type Flux[I, O any] struct {
+type Flux struct {
 	server  *Server
 	options *Options
-	handler HandlerFunc[I, O]
+	handler HandlerFunc
 }
 
 // Options represent optional parameters of a Flux used to configure its behavior.
@@ -19,7 +19,7 @@ type Options struct {
 	// authentication fails due to a missing or invalid auth token, the
 	// server will respond with a 401 Unauthorized error. If this option
 	// is set, then a value must be provided for ServerOptions.Authenticator.
-	Authenticate bool
+	RequireAuth bool
 	// Set the required permissions for this handler. This option requires
 	// the Authenticate option to also be set. If this option is set and
 	// the authenticated user does not have all required permissions, then
@@ -34,22 +34,13 @@ type Options struct {
 }
 
 // HandlerFunc...
-type HandlerFunc[I, O any] func(*Flow, I) (O, error)
+type HandlerFunc func(*Flow) error
 
 // Empty...
 type Empty *struct{}
 
-// New...
-func New[I, O any](s *Server, name string, handler HandlerFunc[I, O], options *Options) {
-	s.router.table[name] = &Flux[I, O]{
-		server:  s,
-		options: options,
-		handler: handler,
-	}
-}
-
 // ServeHTTP satisfies the http.Handler interface.
-func (f *Flux[I, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (f *Flux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	flow := f.server.pool.Get().(*Flow)
 	defer f.server.pool.Put(flow)
 	flow.init(w, r)
@@ -67,7 +58,7 @@ func (f *Flux[I, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(HeaderXRequestID, flow.ID)
 
 	// Set security headers.
-	if f.server.TLS {
+	if f.server.tls {
 		w.Header().Add(HeaderStrictTransportSecurity, "max-age=63072000; includeSubDomains")
 	}
 	w.Header().Add(HeaderContentSecurityPolicy, "default-src 'none'; frame-ancestors 'none'")
@@ -96,33 +87,12 @@ func (f *Flux[I, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		flow.Session = session
 	}
 
-	if f.options.Authenticate && flow.Session == nil {
+	if f.options.RequireAuth && flow.Session == nil {
 		f.server.handleError(flow, UnauthorizedError)
 		return
 	}
 
-	var in I
-	if _, ok := any(in).(Empty); !ok {
-		// Input type is non-empty; bind the request to the input type.
-		if err := flow.bind(&in); err != nil {
-			f.server.handleError(flow, err)
-			return
-		}
-	}
-
-	out, err := f.handler(flow, in)
-	if err != nil {
+	if err := f.handler(flow); err != nil {
 		f.server.handleError(flow, err)
-		return
-	}
-
-	// If output is empty, return empty response.
-	if _, ok := any(out).(Empty); ok {
-		err = flow.respond(f.options.SuccessStatus, nil)
-	} else {
-		err = flow.respond(f.options.SuccessStatus, out)
-	}
-	if err != nil {
-		flow.Logger.Error("Error writing HTTP response", slog.String("error", err.Error()))
 	}
 }

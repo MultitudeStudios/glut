@@ -16,6 +16,17 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+const (
+	defaultPort              = 8000
+	defaultMaxRequestSize    = 1024 * 1024 // 1 MB
+	defaultMaxHeaderBytes    = 1024 * 1024 // 1 MB
+	defaultReadTimeout       = 5 * time.Second
+	defaultReadHeaderTimeout = 3 * time.Second
+	defaultWriteTimeout      = 10 * time.Second
+	defaultIdleTimeout       = 120 * time.Second
+	defaultShutdownTimeout   = 5 * time.Second
+)
+
 // Server...
 type Server struct {
 	router             *router
@@ -23,7 +34,7 @@ type Server struct {
 	pool               sync.Pool
 	port               int
 	debug              bool
-	TLS                bool
+	tls                bool
 	logger             *slog.Logger
 	ipExtractor        IPExtractor
 	authenticator      Authenticator
@@ -59,12 +70,12 @@ type ServerOptions struct {
 // ConfigureServer...
 func (s *Server) ConfigureServer(options *ServerOptions) {
 	// Set server defaults.
-	s.port = 8000
+	s.port = defaultPort
 	s.logger = s.DefaultLogger()
 	s.authTokenExtractor = DefaultAuthTokenExtractor()
 	s.ipExtractor = ExtractIPDirect()
-	s.maxRequestSize = 1024 * 1024 // 1MB
-	s.shutdownTimeout = 5 * time.Second
+	s.maxRequestSize = defaultMaxRequestSize
+	s.shutdownTimeout = defaultShutdownTimeout
 
 	// Configure flow pool.
 	s.pool.New = func() interface{} {
@@ -80,23 +91,20 @@ func (s *Server) ConfigureServer(options *ServerOptions) {
 	}
 
 	// Configure HTTP server.
-	if options.Port == 0 {
-		options.Port = 8000
-	}
 	if options.MaxHeaderBytes == 0 {
-		options.MaxHeaderBytes = 1024 * 1024 // 1MB
+		options.MaxHeaderBytes = defaultMaxHeaderBytes
 	}
 	if options.ReadTimeout == 0 {
-		options.ReadTimeout = 5 * time.Second
+		options.ReadTimeout = defaultReadTimeout
 	}
 	if options.ReadHeaderTimeout == 0 {
-		options.ReadHeaderTimeout = 3 * time.Second
+		options.ReadHeaderTimeout = defaultReadHeaderTimeout
 	}
 	if options.WriteTimeout == 0 {
-		options.WriteTimeout = 10 * time.Second
+		options.WriteTimeout = defaultWriteTimeout
 	}
 	if options.IdleTimeout == 0 {
-		options.IdleTimeout = 120 * time.Second
+		options.IdleTimeout = defaultIdleTimeout
 	}
 	s.server = &http.Server{
 		Handler:           s.router,
@@ -118,7 +126,7 @@ func (s *Server) ConfigureServer(options *ServerOptions) {
 		s.port = options.Port
 	}
 	if options.TLS {
-		s.TLS = true
+		s.tls = true
 	}
 	if options.Logger != nil {
 		s.logger = options.Logger
@@ -139,35 +147,6 @@ func (s *Server) ConfigureServer(options *ServerOptions) {
 		s.shutdownTimeout = options.ShutdownTimeout
 	}
 }
-
-// Headers
-const (
-	HeaderAuthorization        = "Authorization"
-	HeaderContentEncoding      = "Content-Encoding"
-	HeaderContentLength        = "Content-Length"
-	HeaderContentType          = "Content-Type"
-	ContentTypeApplicationJSON = "application/json; charset=UTF-8"
-	HeaderXForwardedFor        = "X-Forwarded-For"
-	HeaderXRealIP              = "X-Real-Ip"
-	HeaderXRequestID           = "X-Request-Id"
-
-	// Access control
-	HeaderAccessControlRequestMethod    = "Access-Control-Request-Method"
-	HeaderAccessControlRequestHeaders   = "Access-Control-Request-Headers"
-	HeaderAccessControlAllowOrigin      = "Access-Control-Allow-Origin"
-	HeaderAccessControlAllowMethods     = "Access-Control-Allow-Methods"
-	HeaderAccessControlAllowHeaders     = "Access-Control-Allow-Headers"
-	HeaderAccessControlAllowCredentials = "Access-Control-Allow-Credentials"
-	HeaderAccessControlExposeHeaders    = "Access-Control-Expose-Headers"
-	HeaderAccessControlMaxAge           = "Access-Control-Max-Age"
-
-	// Security
-	HeaderStrictTransportSecurity = "Strict-Transport-Security"
-	HeaderXContentTypeOptions     = "X-Content-Type-Options"
-	HeaderXFrameOptions           = "X-Frame-Options"
-	HeaderContentSecurityPolicy   = "Content-Security-Policy"
-	HeaderReferrerPolicy          = "Referrer-Policy"
-)
 
 // NewServer creates a new Server.
 func NewServer(options *ServerOptions) *Server {
@@ -220,9 +199,18 @@ func (s *Server) Stop() {
 	s.logger.Debug("Server shutdown complete.")
 }
 
+// Handle...
+func (s *Server) Handle(name string, handler HandlerFunc, options *Options) {
+	s.router.table[name] = &Flux{
+		server:  s,
+		options: options,
+		handler: handler,
+	}
+}
+
 // newListener...
 func (s *Server) newListener(addr string) (net.Listener, error) {
-	if s.TLS {
+	if s.tls {
 		autoTLSManager := autocert.Manager{
 			Prompt: autocert.AcceptTOS,
 			// Cache certificates to avoid issues with rate limits (https://letsencrypt.org/docs/rate-limits)
