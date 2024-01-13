@@ -61,6 +61,7 @@ func NewService(db *pgxpool.Pool, cfg *Config) *Service {
 	cfg.TokenLength = minMaxValue(cfg.TokenLength, minTokenLength, maxTokenLength, defaultTokenLength)
 	cfg.SessionTokenDuration = minMaxValue(cfg.SessionTokenDuration, minSessionTokenDuration, maxSessionTokenDuration, defaultSessionTokenDuration)
 	cfg.VerificationTokenDuration = minMaxValue(cfg.VerificationTokenDuration, minVerificationTokenDuration, maxVerificationTokenDuration, defaultVerificationTokenDuration)
+	cfg.VerificationTokenWaitTime = minMaxValue(cfg.VerificationTokenWaitTime, minVerificationTokenWaitTime, maxVerificationTokenWaitTime, defaultVerificationTokenWaitTime)
 	cfg.ChangeEmailTokenDuration = minMaxValue(cfg.ChangeEmailTokenDuration, minChangeEmailTokenDuration, maxChangeEmailTokenDuration, defaultChangeEmailTokenDuration)
 
 	return &Service{
