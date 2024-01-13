@@ -213,14 +213,9 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 		return Session{}, err
 	}
 
-	token, err := generateToken(s.cfg.SessionTokenLength)
-	if err != nil {
-		return Session{}, err
-	}
-
 	sess := Session{
 		ID:        uuid.New().String(),
-		Token:     token,
+		Token:     mustGenerateToken(s.cfg.TokenLength),
 		UserID:    userID,
 		UserIP:    f.IP,
 		CreatedAt: f.Time,

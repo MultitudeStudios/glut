@@ -1,26 +1,34 @@
 package auth
 
 import (
+	"cmp"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	defaultPasswordFunc              = comparePasswords
-	minSessionTokenLength            = 16
-	maxSessionTokenLength            = 64
-	defaultSessionTokenLength        = 24
-	minSessionTokenDuration          = 5 * time.Minute
-	maxSessionTokenDuration          = 24 * time.Hour
-	defaultSessionTokenDuration      = 30 * time.Minute
-	minVerificationTokenLength       = 16
-	maxVerificationTokenLength       = 64
-	defaultVerificationTokenLength   = 24
+	defaultPasswordFunc = comparePasswords
+
+	defaultTokenLength = 24
+	minTokenLength     = 16
+	maxTokenLength     = 64
+
+	minSessionTokenDuration     = 5 * time.Minute
+	maxSessionTokenDuration     = 24 * time.Hour
+	defaultSessionTokenDuration = 30 * time.Minute
+
 	minVerificationTokenDuration     = 30 * time.Minute
 	maxVerificationTokenDuration     = 72 * time.Hour
 	defaultVerificationTokenDuration = 24 * time.Hour
-	verificationTokenWaitPeriod      = 5 * time.Minute
+
+	minVerificationTokenWaitTime     = 1 * time.Minute
+	maxVerificationTokenWaitTime     = 15 * time.Minute
+	defaultVerificationTokenWaitTime = 5 * time.Minute
+
+	minChangeEmailTokenDuration     = 15 * time.Minute
+	maxChangeEmailTokenDuration     = 24 * time.Hour
+	defaultChangeEmailTokenDuration = 1 * time.Hour
 )
 
 // Service...
@@ -31,14 +39,16 @@ type Service struct {
 
 // Config...
 type Config struct {
-	// SessionTokenLength...
-	SessionTokenLength int
+	// TokenLength...
+	TokenLength int
 	// SessionTokenDuration...
 	SessionTokenDuration time.Duration
-	// VerificationTokenLength...
-	VerificationTokenLength int
 	// VerificationTokenDuration...
 	VerificationTokenDuration time.Duration
+	// VerificationTokenWaitTime...
+	VerificationTokenWaitTime time.Duration
+	// ChangeEmailTokenDuration...
+	ChangeEmailTokenDuration time.Duration
 	// PasswordChecker...
 	PasswordChecker PasswordCompareFunc
 }
@@ -48,20 +58,20 @@ func NewService(db *pgxpool.Pool, cfg *Config) *Service {
 	if cfg.PasswordChecker == nil {
 		cfg.PasswordChecker = defaultPasswordFunc
 	}
-	if cfg.SessionTokenLength < minSessionTokenLength || cfg.SessionTokenLength > maxSessionTokenLength {
-		cfg.SessionTokenLength = defaultSessionTokenLength
-	}
-	if cfg.SessionTokenDuration < minSessionTokenDuration || cfg.SessionTokenDuration > maxSessionTokenDuration {
-		cfg.SessionTokenDuration = defaultSessionTokenDuration
-	}
-	if cfg.VerificationTokenLength < minVerificationTokenLength || cfg.VerificationTokenLength > maxVerificationTokenLength {
-		cfg.VerificationTokenLength = defaultVerificationTokenLength
-	}
-	if cfg.VerificationTokenDuration < minVerificationTokenDuration || cfg.VerificationTokenDuration > maxVerificationTokenDuration {
-		cfg.VerificationTokenDuration = defaultVerificationTokenDuration
-	}
+	cfg.TokenLength = minMaxValue(cfg.TokenLength, minTokenLength, maxTokenLength, defaultTokenLength)
+	cfg.SessionTokenDuration = minMaxValue(cfg.SessionTokenDuration, minSessionTokenDuration, maxSessionTokenDuration, defaultSessionTokenDuration)
+	cfg.VerificationTokenDuration = minMaxValue(cfg.VerificationTokenDuration, minVerificationTokenDuration, maxVerificationTokenDuration, defaultVerificationTokenDuration)
+	cfg.ChangeEmailTokenDuration = minMaxValue(cfg.ChangeEmailTokenDuration, minChangeEmailTokenDuration, maxChangeEmailTokenDuration, defaultChangeEmailTokenDuration)
+
 	return &Service{
 		cfg: cfg,
 		db:  db,
 	}
+}
+
+func minMaxValue[T cmp.Ordered](val, min, max, defaultVal T) T {
+	if val < min || val > max {
+		return defaultVal
+	}
+	return val
 }

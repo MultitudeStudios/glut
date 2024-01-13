@@ -25,6 +25,7 @@ func Handler(s *flux.Server, service *auth.Service) {
 
 	// Admin API
 	s.Handle("auth.admin.changePassword", changePassword(service), &flux.Options{})
+	s.Handle("auth.admin.changeEmail", changeEmail(service), &flux.Options{})
 	s.Handle("auth.admin.verifyUser", verifyUser(service), &flux.Options{})
 
 	// Security API

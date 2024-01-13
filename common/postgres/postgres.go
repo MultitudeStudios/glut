@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -49,6 +51,16 @@ func New(ctx context.Context, cfg *Config) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	poolConf.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		var hstoreOID uint32
+		if err := conn.QueryRow(context.Background(), `select oid from pg_type where typname = 'hstore'`).Scan(&hstoreOID); err != nil {
+			panic(err)
+		}
+		conn.TypeMap().RegisterType(&pgtype.Type{Name: "hstore", OID: hstoreOID, Codec: pgtype.HstoreCodec{}})
+		return nil
+	}
+
 	poolConf.MinConns = int32(cfg.MinOpenConns)
 	poolConf.MaxConns = int32(cfg.MaxOpenConns)
 	poolConf.MaxConnLifetime = cfg.MaxConnLifetime

@@ -17,7 +17,7 @@ func changePassword(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 
@@ -46,8 +46,28 @@ func changeEmail(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
+		}
+
+		if err := s.ChangeEmail(f, &auth.ChangeEmailInput{
+			Token:    r.Token,
+			Email:    r.Email,
+			Password: r.Password,
+		}); err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			if errors.Is(err, auth.ErrUnauthorized) {
+				return flux.UnauthorizedError
+			}
+			if errors.Is(err, auth.ErrInvalidPassword) {
+				return flux.NewError("invalid_password", http.StatusForbidden, "Invalid password.")
+			}
+			if errors.Is(err, auth.ErrInvalidToken) {
+				return flux.NewError("invalid_token", http.StatusUnprocessableEntity, "Invalid token.")
+			}
+			return fmt.Errorf("api.changeEmail: %w", err)
 		}
 		return nil
 	}
@@ -60,7 +80,7 @@ func verifyUser(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 

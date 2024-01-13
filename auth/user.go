@@ -201,9 +201,19 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 		return User{}, err
 	}
-	if err := s.createUserVerificationToken(f, tx, user.ID); err != nil {
+
+	token := Token{
+		ID:        mustGenerateToken(s.cfg.TokenLength),
+		UserID:    f.Session.User,
+		Kind:      tokenKindVerifyUser,
+		CreatedAt: f.Time,
+		ExpiresAt: f.Time.Add(s.cfg.VerificationTokenDuration),
+	}
+	if err := saveToken(f, tx, token); err != nil {
 		return User{}, err
 	}
+
+	// TODO: send user verification email with token
 
 	if err := tx.Commit(f.Ctx); err != nil {
 		return User{}, err

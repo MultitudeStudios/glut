@@ -30,7 +30,7 @@ func querySessions(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 
@@ -77,7 +77,7 @@ func createSession(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 
@@ -119,7 +119,7 @@ func clearSessions(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 

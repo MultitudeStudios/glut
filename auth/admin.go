@@ -8,7 +8,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 )
@@ -16,6 +15,12 @@ import (
 type ChangePasswordInput struct {
 	OldPassword string
 	NewPassword string
+}
+
+type ChangeEmailInput struct {
+	Token    string
+	Email    string
+	Password string
 }
 
 type VerifyUserInput struct {
@@ -54,7 +59,6 @@ func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
 		}
 		return err
 	}
-
 	if err := validatePassword(passwordHash, in.OldPassword, s.cfg.PasswordChecker); err != nil {
 		return err
 	}
@@ -80,6 +84,121 @@ func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
 	return nil
 }
 
+func (s *Service) ChangeEmail(f *flux.Flow, in *ChangeEmailInput) error {
+	if in.Token != "" {
+		tx, err := s.db.Begin(f.Ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(f.Ctx)
+
+		token, err := getToken(f, tx, in.Token, tokenKindChangeEmail)
+		if err != nil {
+			return err
+		}
+		newEmail := token.Get(tokenMetaNewEmail)
+		if newEmail == "" {
+			return ErrInvalidToken
+		}
+
+		sql, args := psql.Select(
+			sm.From("auth.users"),
+			sm.Columns("email"),
+			sm.Where(psql.Quote("id").EQ(psql.Arg(token.UserID))),
+			sm.ForNoKeyUpdate(),
+		).MustBuild()
+
+		var email string
+		if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&email); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrUserNotFound
+			}
+			return err
+		}
+
+		sql, args = psql.Update(
+			um.Table("auth.users"),
+			um.Set("email").ToArg(newEmail),
+			um.Where(psql.Quote("id").EQ(psql.Arg(token.UserID))),
+		).MustBuild()
+
+		if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
+			return err
+		}
+		if err := deleteToken(f, tx, token.ID); err != nil {
+			return err
+		}
+
+		// TODO: send notification to previous email
+
+		if err := tx.Commit(f.Ctx); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// No token provided; initiate email change process.
+	if f.Session == nil {
+		return ErrUnauthorized
+	}
+	var errs valid.Errors
+	if in.Email == "" {
+		errs = append(errs, valid.Error{Field: "email", Error: "Required."})
+	}
+	if in.Password == "" {
+		errs = append(errs, valid.Error{Field: "password", Error: "Required."})
+	}
+	if len(errs) != 0 {
+		return errs
+	}
+
+	tx, err := s.db.Begin(f.Ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(f.Ctx)
+
+	sql, args := psql.Select(
+		sm.From("auth.users"),
+		sm.Columns("email", "password_hash"),
+		sm.Where(psql.Quote("id").EQ(psql.Arg(f.Session.User))),
+		sm.ForNoKeyUpdate(),
+	).MustBuild()
+
+	var email string
+	var passwordHash string
+	if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&email, &passwordHash); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	if err := validatePassword(passwordHash, in.Password, s.cfg.PasswordChecker); err != nil {
+		return err
+	}
+
+	token := Token{
+		ID:        mustGenerateToken(s.cfg.TokenLength),
+		UserID:    f.Session.User,
+		Kind:      tokenKindChangeEmail,
+		CreatedAt: f.Time,
+		ExpiresAt: f.Time.Add(s.cfg.ChangeEmailTokenDuration),
+		Meta: map[string]*string{
+			tokenMetaNewEmail: &in.Email,
+		},
+	}
+	if err := saveToken(f, tx, token); err != nil {
+		return err
+	}
+
+	// TODO: send email with token
+
+	if err := tx.Commit(f.Ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 	// Token provided; attempt to verify user using token.
 	if in.Token != "" {
@@ -89,40 +208,21 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 		}
 		defer tx.Rollback(f.Ctx)
 
-		sql, args := psql.Select(
-			sm.From("auth.tokens"),
-			sm.Columns("user_id"),
-			psql.WhereAnd(
-				sm.Where(psql.Quote("id").EQ(psql.Arg(in.Token))),
-				sm.Where(psql.Quote("expires_at").GT(psql.Arg(f.Time))),
-			),
-			sm.ForNoKeyUpdate(),
-		).MustBuild()
-
-		var userID string
-		if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&userID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return ErrInvalidToken
-			}
+		token, err := getToken(f, tx, in.Token, tokenKindVerifyUser)
+		if err != nil {
 			return err
 		}
 
-		sql, args = psql.Update(
+		sql, args := psql.Update(
 			um.Table("auth.users"),
 			um.Set("verified_at").ToArg(f.Time),
-			um.Where(psql.Quote("id").EQ(psql.Arg(userID))),
+			um.Where(psql.Quote("id").EQ(psql.Arg(token.UserID))),
 		).MustBuild()
 
 		if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 			return err
 		}
-
-		sql, args = psql.Delete(
-			dm.From("auth.tokens"),
-			dm.Where(psql.Quote("id").EQ(psql.Arg(in.Token))),
-		).MustBuild()
-
-		if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
+		if err := deleteToken(f, tx, token.ID); err != nil {
 			return err
 		}
 
@@ -147,6 +247,7 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 		sm.From("auth.users"),
 		sm.Columns("verified_at"),
 		sm.Where(psql.Quote("id").EQ(psql.Arg(f.Session.User))),
+		sm.ForNoKeyUpdate(),
 	).MustBuild()
 
 	var verifiedAt *time.Time
@@ -173,12 +274,22 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 	if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&tokenCreatedAt); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if !tokenCreatedAt.IsZero() && time.Since(tokenCreatedAt) < verificationTokenWaitPeriod {
+	if !tokenCreatedAt.IsZero() && time.Since(tokenCreatedAt) < s.cfg.VerificationTokenWaitTime {
 		return ErrTryLater
 	}
-	if err := s.createUserVerificationToken(f, tx, f.Session.User); err != nil {
+
+	token := Token{
+		ID:        mustGenerateToken(s.cfg.TokenLength),
+		UserID:    f.Session.User,
+		Kind:      tokenKindVerifyUser,
+		CreatedAt: f.Time,
+		ExpiresAt: f.Time.Add(s.cfg.VerificationTokenDuration),
+	}
+	if err := saveToken(f, tx, token); err != nil {
 		return err
 	}
+
+	// TODO: send email with verification token
 
 	if err := tx.Commit(f.Ctx); err != nil {
 		return err

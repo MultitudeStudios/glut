@@ -31,7 +31,7 @@ func queryUsers(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 		users, err := s.Users(f, &auth.UserQuery{
@@ -83,7 +83,7 @@ func createUser(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 
@@ -123,7 +123,7 @@ func deleteUsers(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 

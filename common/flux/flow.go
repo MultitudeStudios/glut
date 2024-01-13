@@ -29,7 +29,7 @@ type Flow struct {
 func (f *Flow) Bind(v any) error {
 	dec := json.NewDecoder(f.r.Body)
 	dec.DisallowUnknownFields()
-	err := dec.Decode(&v)
+	err := dec.Decode(v)
 	if ute, ok := err.(*json.UnmarshalTypeError); ok {
 		return InvalidError("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset).SetInternal(err)
 	} else if se, ok := err.(*json.SyntaxError); ok {
@@ -50,14 +50,6 @@ func (f *Flow) Respond(status int, v any) error {
 	f.w.Header().Add(HeaderContentType, ContentTypeApplicationJSON)
 	f.w.WriteHeader(status)
 	return json.NewEncoder(f.w).Encode(v)
-}
-
-// User...
-func (f *Flow) User() string {
-	if f.Session == nil {
-		return ""
-	}
-	return f.Session.User
 }
 
 // init...

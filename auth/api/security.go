@@ -30,7 +30,7 @@ func queryBans(s *auth.Service) flux.HandlerFunc {
 
 	return func(f *flux.Flow) error {
 		var r request
-		if err := f.Bind(r); err != nil {
+		if err := f.Bind(&r); err != nil {
 			return err
 		}
 
