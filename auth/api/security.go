@@ -119,3 +119,29 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 		return f.Respond(http.StatusOK, res)
 	}
 }
+
+func unbanUser(s *auth.Service) flux.HandlerFunc {
+	type request struct {
+		UserID string `json:"user_id"`
+	}
+
+	return func(f *flux.Flow) error {
+		var r request
+		if err := f.Bind(&r); err != nil {
+			return err
+		}
+
+		if err := s.UnbanUser(f, &auth.UnbanUserInput{
+			UserID: r.UserID,
+		}); err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			if errors.Is(err, auth.ErrBanNotFound) {
+				return flux.NotFoundError("Ban not found.")
+			}
+			return fmt.Errorf("api.unbanUser: %w", err)
+		}
+		return f.Respond(http.StatusOK, nil)
+	}
+}

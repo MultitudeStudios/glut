@@ -41,6 +41,10 @@ type BanUserInput struct {
 	Replace     bool
 }
 
+type UnbanUserInput struct {
+	UserID string
+}
+
 func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 	var errs valid.Errors
 	if in.UserID != "" && !valid.IsUUID(in.UserID) {
@@ -137,8 +141,7 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 	var errs valid.Errors
 	if in.UserID == "" {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Required."})
-	}
-	if !valid.IsUUID(in.UserID) {
+	} else if !valid.IsUUID(in.UserID) {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
 	}
 	if in.Reason == "" {
@@ -235,4 +238,30 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 		return Ban{}, err
 	}
 	return ban, nil
+}
+
+func (s *Service) UnbanUser(f *flux.Flow, in *UnbanUserInput) error {
+	var errs valid.Errors
+	if in.UserID == "" {
+		errs = append(errs, valid.Error{Field: "user_id", Error: "Required."})
+	} else if !valid.IsUUID(in.UserID) {
+		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
+	}
+	if len(errs) != 0 {
+		return errs
+	}
+
+	sql, args := psql.Delete(
+		dm.From("auth.bans"),
+		dm.Where(psql.Quote("user_id").EQ(psql.Arg(in.UserID))),
+	).MustBuild()
+
+	res, err := s.db.Exec(f.Ctx, sql, args...)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrBanNotFound
+	}
+	return nil
 }
