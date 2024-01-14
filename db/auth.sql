@@ -88,8 +88,6 @@ CREATE TABLE auth.bans (
   description text,
   banned_at timestamptz NOT NULL,
   unbanned_at timestamptz NOT NULL,
-  updated_at timestamptz,
-  updated_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
   banned_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
   CHECK (unbanned_at >= banned_at)
 );

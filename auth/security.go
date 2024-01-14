@@ -24,8 +24,6 @@ type Ban struct {
 	BannedBy    *string
 	BannedAt    time.Time
 	UnbannedAt  time.Time
-	UpdatedAt   *time.Time
-	UpdatedBy   *string
 }
 
 type BanQuery struct {
@@ -40,6 +38,7 @@ type BanUserInput struct {
 	Reason      string
 	Description *string
 	Duration    int64
+	Replace     bool
 }
 
 func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
@@ -66,8 +65,6 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 			"banned_by",
 			"banned_at",
 			"unbanned_at",
-			"updated_at",
-			"updated_by",
 		),
 		sm.From("auth.bans"),
 	)
@@ -78,7 +75,10 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 	}
 	if !in.IncludeExpired {
 		q.Apply(
-			sm.Where(psql.Quote("unbanned_at").GT(psql.Arg(f.Time))),
+			psql.WhereOr(
+				sm.Where(psql.Quote("unbanned_at").GT(psql.Arg(f.Time))),
+				sm.Where(psql.Quote("banned_at").EQ(psql.Quote("unbanned_at"))),
+			),
 		)
 	}
 	if in.Limit != 0 {
@@ -107,8 +107,6 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 		var bannedBy *string
 		var bannedAt time.Time
 		var unbannedAt time.Time
-		var updatedAt *time.Time
-		var updatedBy *string
 
 		if err := rows.Scan(
 			&userID,
@@ -117,8 +115,6 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 			&bannedBy,
 			&bannedAt,
 			&unbannedAt,
-			&updatedAt,
-			&updatedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -129,8 +125,6 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 			BannedBy:    bannedBy,
 			BannedAt:    bannedAt,
 			UnbannedAt:  unbannedAt,
-			UpdatedAt:   updatedAt,
-			UpdatedBy:   updatedBy,
 		})
 	}
 	if in.UserID != "" && len(bans) == 0 {
@@ -183,6 +177,27 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 		return Ban{}, ErrUserNotFound
 	}
 
+	sql, args = psql.Select(
+		sm.From("auth.bans"),
+		sm.Columns("user_id"),
+		psql.WhereAnd(
+			sm.Where(psql.Quote("user_id").EQ(psql.Arg(in.UserID))),
+			psql.WhereOr(
+				sm.Where(psql.Quote("unbanned_at").GT(psql.Arg(f.Time))),
+				sm.Where(psql.Quote("banned_at").EQ(psql.Quote("unbanned_at"))),
+			),
+		),
+		sm.ForNoKeyUpdate(),
+	).MustBuild()
+
+	var banExists bool
+	if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&banExists); err != nil {
+		return Ban{}, err
+	}
+	if banExists && !in.Replace {
+		return Ban{}, ErrBanExists
+	}
+
 	ban := Ban{
 		UserID:      in.UserID,
 		Reason:      in.Reason,
@@ -192,10 +207,16 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 		UnbannedAt:  unbannedAt,
 	}
 
-	sql, args = psql.Insert(
+	q := psql.Insert(
 		im.Into("auth.bans", "user_id", "reason", "description", "banned_by", "banned_at", "unbanned_at"),
 		im.Values(psql.Arg(ban.UserID, ban.Reason, ban.Description, ban.BannedBy, ban.BannedAt, ban.UnbannedAt)),
-	).MustBuild()
+	)
+	if !banExists || in.Replace {
+		q.Apply(
+			im.OnConflict("user_id").DoUpdate().SetExcluded("reason", "description", "banned_by", "banned_at", "unbanned_at"),
+		)
+	}
+	sql, args = q.MustBuild()
 
 	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 		return Ban{}, err

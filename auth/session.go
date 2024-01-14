@@ -193,8 +193,8 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 		psql.WhereAnd(
 			sm.Where(psql.Quote("user_id").EQ(psql.Arg(userID))),
 			psql.WhereOr(
-				sm.Where(psql.Quote("banned_at").EQ(psql.Quote("unbanned_at"))),
 				sm.Where(psql.Quote("unbanned_at").GT(psql.Arg(f.Time))),
+				sm.Where(psql.Quote("banned_at").EQ(psql.Quote("unbanned_at"))),
 			),
 		),
 	).MustBuild()

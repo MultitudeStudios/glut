@@ -19,14 +19,12 @@ func queryBans(s *auth.Service) flux.HandlerFunc {
 	}
 
 	type response struct {
-		UserID      string     `json:"user_id"`
-		Reason      string     `json:"reason"`
-		Description *string    `json:"description"`
-		BannedBy    *string    `json:"banned_by"`
-		BannedAt    time.Time  `json:"banned_at"`
-		UnbannedAt  time.Time  `json:"unbanned_at"`
-		UpdatedAt   *time.Time `json:"updated_at"`
-		UpdatedBy   *string    `json:"updated_by"`
+		UserID      string    `json:"user_id"`
+		Reason      string    `json:"reason"`
+		Description *string   `json:"description"`
+		BannedBy    *string   `json:"banned_by"`
+		BannedAt    time.Time `json:"banned_at"`
+		UnbannedAt  time.Time `json:"unbanned_at"`
 	}
 
 	return func(f *flux.Flow) error {
@@ -60,8 +58,6 @@ func queryBans(s *auth.Service) flux.HandlerFunc {
 				BannedBy:    ban.BannedBy,
 				BannedAt:    ban.BannedAt,
 				UnbannedAt:  ban.UnbannedAt,
-				UpdatedAt:   ban.UpdatedAt,
-				UpdatedBy:   ban.UpdatedBy,
 			})
 		}
 		return f.Respond(http.StatusOK, res)
@@ -74,17 +70,16 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 		Reason      string  `json:"reason"`
 		Description *string `json:"description"`
 		Duration    int64   `json:"duration"`
+		Replace     bool    `json:"replace"`
 	}
 
 	type response struct {
-		UserID      string     `json:"user_id"`
-		Reason      string     `json:"reason"`
-		Description *string    `json:"description"`
-		BannedBy    *string    `json:"banned_by"`
-		BannedAt    time.Time  `json:"banned_at"`
-		UnbannedAt  time.Time  `json:"unbanned_at"`
-		UpdatedAt   *time.Time `json:"updated_at"`
-		UpdatedBy   *string    `json:"updated_by"`
+		UserID      string    `json:"user_id"`
+		Reason      string    `json:"reason"`
+		Description *string   `json:"description"`
+		BannedBy    *string   `json:"banned_by"`
+		BannedAt    time.Time `json:"banned_at"`
+		UnbannedAt  time.Time `json:"unbanned_at"`
 	}
 
 	return func(f *flux.Flow) error {
@@ -98,6 +93,7 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 			Reason:      r.Reason,
 			Description: r.Description,
 			Duration:    r.Duration,
+			Replace:     r.Replace,
 		})
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
@@ -106,7 +102,10 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 			if errors.Is(err, auth.ErrUserNotFound) {
 				return flux.NotFoundError("User not found.")
 			}
-			return fmt.Errorf("api.banUsers: %w", err)
+			if errors.Is(err, auth.ErrBanExists) {
+				return flux.NewError("ban_exists", http.StatusConflict, "Ban already exists.")
+			}
+			return fmt.Errorf("api.banUser: %w", err)
 		}
 
 		res := response{
@@ -116,8 +115,6 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 			BannedBy:    ban.BannedBy,
 			BannedAt:    ban.BannedAt,
 			UnbannedAt:  ban.UnbannedAt,
-			UpdatedAt:   ban.UpdatedAt,
-			UpdatedBy:   ban.UpdatedBy,
 		}
 		return f.Respond(http.StatusOK, res)
 	}
