@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"glut/common/flux"
 	"glut/common/sqlutil"
 	"glut/common/valid"
@@ -185,6 +186,25 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 			return Session{}, ErrInvalidCredentials
 		}
 		return Session{}, err
+	}
+
+	sql, args = psql.Select(
+		sm.From("auth.bans"),
+		psql.WhereAnd(
+			sm.Where(psql.Quote("user_id").EQ(psql.Arg(userID))),
+			psql.WhereOr(
+				sm.Where(psql.Quote("banned_at").EQ(psql.Quote("unbanned_at"))),
+				sm.Where(psql.Quote("unbanned_at").GT(psql.Arg(f.Time))),
+			),
+		),
+	).MustBuild()
+
+	var isBanned bool
+	if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&isBanned); err != nil {
+		return Session{}, err
+	}
+	if isBanned {
+		return Session{}, ErrUserBanned
 	}
 
 	q := `SELECT COUNT(id) FROM auth.sessions WHERE user_id = $1;`

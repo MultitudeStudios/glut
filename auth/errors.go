@@ -8,6 +8,7 @@ var (
 	ErrUserExists         = errors.New("user already exists")
 	ErrUserNotFound       = errors.New("user not found")
 	ErrUserVerified       = errors.New("user already verified")
+	ErrUserBanned         = errors.New("user banned")
 	ErrSessionNotFound    = errors.New("session not found")
 	ErrSessionLimit       = errors.New("reached session limit")
 	ErrInvalidCredentials = errors.New("invalid credentials")

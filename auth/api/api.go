@@ -30,4 +30,5 @@ func Handler(s *flux.Server, service *auth.Service) {
 
 	// Security API
 	s.Handle("auth.security.bans", queryBans(service), &flux.Options{})
+	s.Handle("auth.security.banUser", banUser(service), &flux.Options{})
 }

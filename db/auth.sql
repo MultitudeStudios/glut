@@ -84,7 +84,8 @@ CREATE TABLE auth.tokens (
 
 CREATE TABLE auth.bans (
   user_id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
-  ban_reason text NOT NULL,
+  reason text NOT NULL,
+  description text,
   banned_at timestamptz NOT NULL,
   unbanned_at timestamptz NOT NULL,
   updated_at timestamptz,
