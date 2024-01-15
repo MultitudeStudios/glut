@@ -90,13 +90,13 @@ func createSession(s *auth.Service) flux.HandlerFunc {
 				return flux.ValidationError(verr)
 			}
 			if errors.Is(err, auth.ErrInvalidCredentials) {
-				return flux.NewError("invalid_credentials", http.StatusUnauthorized, "Invalid credentials.")
+				return ErrInvalidCredentials
 			}
 			if errors.Is(err, auth.ErrUserBanned) {
-				return flux.NewError("user_banned", http.StatusForbidden, "User banned.")
+				return auth.ErrUserBanned
 			}
 			if errors.Is(err, auth.ErrSessionLimit) {
-				return flux.NewError("session_limit", http.StatusConflict, "Session limit reached.")
+				return ErrSessionLimit
 			}
 			return fmt.Errorf("api.createSession: %w", err)
 		}

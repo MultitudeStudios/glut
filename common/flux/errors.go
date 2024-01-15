@@ -33,6 +33,13 @@ var (
 			Message: message,
 		}
 	}
+	ExistsError = func(message string) *Error {
+		return &Error{
+			Code:    "exists",
+			Status:  http.StatusConflict,
+			Message: message,
+		}
+	}
 	ValidationError = func(errs any) *Error {
 		return &Error{
 			Code:    "validation",

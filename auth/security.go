@@ -225,14 +225,11 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 		return Ban{}, err
 	}
 
-	sql, args = psql.Delete(
-		dm.From("auth.sessions"),
-		dm.Where(psql.Quote("user_id").EQ(psql.Arg(in.UserID))),
-	).MustBuild()
-
-	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
+	if err := deleteUserSessions(f.Ctx, tx, in.UserID); err != nil {
 		return Ban{}, err
 	}
+
+	// TODO: disconnect user realtime session
 
 	if err := tx.Commit(f.Ctx); err != nil {
 		return Ban{}, err

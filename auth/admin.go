@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"glut/common/flux"
 	"glut/common/valid"
 	"time"
@@ -25,6 +26,12 @@ type ChangeEmailInput struct {
 
 type VerifyUserInput struct {
 	Token string
+}
+
+type ResetPasswordInput struct {
+	Token    string
+	Email    string
+	Password string
 }
 
 func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
@@ -63,21 +70,12 @@ func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
 		return err
 	}
 
-	newPasswordHash, err := hashPassword(in.NewPassword)
-	if err != nil {
+	if err := updateUserPassword(f.Ctx, tx, f.Session.User, in.NewPassword); err != nil {
 		return err
 	}
-
-	sql, args = psql.Update(
-		um.Table("auth.users"),
-		um.Set("password_hash").ToArg(newPasswordHash),
-		um.Where(psql.Quote("id").EQ(psql.Arg(f.Session.User))),
-	).MustBuild()
-
-	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
+	if err := deleteUserSessions(f.Ctx, tx, f.Session.User); err != nil {
 		return err
 	}
-
 	if err := tx.Commit(f.Ctx); err != nil {
 		return err
 	}
@@ -125,7 +123,10 @@ func (s *Service) ChangeEmail(f *flux.Flow, in *ChangeEmailInput) error {
 		if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 			return err
 		}
-		if err := deleteToken(f, tx, token.ID); err != nil {
+		if err := deleteToken(f.Ctx, tx, token.ID); err != nil {
+			return err
+		}
+		if err := deleteUserSessions(f.Ctx, tx, token.UserID); err != nil {
 			return err
 		}
 
@@ -137,7 +138,6 @@ func (s *Service) ChangeEmail(f *flux.Flow, in *ChangeEmailInput) error {
 		return nil
 	}
 
-	// No token provided; initiate email change process.
 	if f.Session == nil {
 		return ErrUnauthorized
 	}
@@ -200,7 +200,6 @@ func (s *Service) ChangeEmail(f *flux.Flow, in *ChangeEmailInput) error {
 }
 
 func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
-	// Token provided; attempt to verify user using token.
 	if in.Token != "" {
 		tx, err := s.db.Begin(f.Ctx)
 		if err != nil {
@@ -222,17 +221,15 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 		if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 			return err
 		}
-		if err := deleteToken(f, tx, token.ID); err != nil {
+		if err := deleteToken(f.Ctx, tx, token.ID); err != nil {
 			return err
 		}
-
 		if err := tx.Commit(f.Ctx); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	// No token provided; initiate user verification process.
 	if f.Session == nil {
 		return ErrUnauthorized
 	}
@@ -278,18 +275,109 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 		return ErrTryLater
 	}
 
-	token := Token{
-		ID:        mustGenerateToken(s.cfg.TokenLength),
-		UserID:    f.Session.User,
-		Kind:      tokenKindVerifyUser,
-		CreatedAt: f.Time,
-		ExpiresAt: f.Time.Add(s.cfg.VerificationTokenDuration),
-	}
+	token := s.createUserVerificationToken(f.Session.User, f.Time)
 	if err := saveToken(f, tx, token); err != nil {
 		return err
 	}
 
 	// TODO: send email with verification token
+
+	if err := tx.Commit(f.Ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) ResetPassword(f *flux.Flow, in *ResetPasswordInput) error {
+	if in.Token != "" {
+		var errs valid.Errors
+		if in.Password == "" {
+			errs = append(errs, valid.Error{Field: "password", Error: "Required."})
+		}
+		if len(errs) != 0 {
+			return errs
+		}
+
+		tx, err := s.db.Begin(f.Ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(f.Ctx)
+
+		token, err := getToken(f, tx, in.Token, tokenKindResetPassword)
+		if err != nil {
+			return err
+		}
+
+		sql, args := psql.Select(
+			sm.From("auth.users"),
+			sm.Columns("id"),
+			sm.Where(psql.Quote("id").EQ(psql.Arg(token.UserID))),
+			sm.ForNoKeyUpdate(),
+		).MustBuild()
+
+		var userExists bool
+		if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&userExists); err != nil {
+			return err
+		}
+		if !userExists {
+			return ErrUserNotFound
+		}
+		if err := updateUserPassword(f.Ctx, tx, token.UserID, in.Password); err != nil {
+			return err
+		}
+		if err := deleteUserSessions(f.Ctx, tx, token.UserID); err != nil {
+			return err
+		}
+		if err := deleteToken(f.Ctx, tx, token.ID); err != nil {
+			return err
+		}
+		if err := tx.Commit(f.Ctx); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	var errs valid.Errors
+	if in.Email == "" {
+		errs = append(errs, valid.Error{Field: "email", Error: "Required."})
+	}
+	if len(errs) != 0 {
+		return errs
+	}
+
+	tx, err := s.db.Begin(f.Ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(f.Ctx)
+
+	sql, args := psql.Select(
+		sm.From("auth.users"),
+		sm.Columns("id"),
+		sm.Where(psql.Quote("email").EQ(psql.Arg(in.Email))),
+	).MustBuild()
+
+	var userID string
+	if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&userID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
+	token := Token{
+		ID:        mustGenerateToken(s.cfg.TokenLength),
+		UserID:    userID,
+		Kind:      tokenKindResetPassword,
+		CreatedAt: f.Time,
+		ExpiresAt: f.Time.Add(s.cfg.ResetPasswordTokenDuration),
+	}
+	if err := saveToken(f, tx, token); err != nil {
+		return err
+	}
+
+	// TODO: send email with token
 
 	if err := tx.Commit(f.Ctx); err != nil {
 		return err

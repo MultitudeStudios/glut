@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -16,9 +17,10 @@ import (
 )
 
 const (
-	tokenKindVerifyUser  = "verify_user"
-	tokenKindChangeEmail = "change_email"
-	tokenMetaNewEmail    = "new_email"
+	tokenKindVerifyUser    = "verify_user"
+	tokenKindResetPassword = "reset_password"
+	tokenKindChangeEmail   = "change_email"
+	tokenMetaNewEmail      = "new_email"
 )
 
 type Token struct {
@@ -36,6 +38,16 @@ func (t *Token) Get(key string) string {
 		return ""
 	}
 	return *v
+}
+
+func (s *Service) createUserVerificationToken(userID string, now time.Time) Token {
+	return Token{
+		ID:        mustGenerateToken(s.cfg.TokenLength),
+		UserID:    userID,
+		Kind:      tokenKindVerifyUser,
+		CreatedAt: now,
+		ExpiresAt: now.Add(s.cfg.VerificationTokenDuration),
+	}
 }
 
 func getToken(f *flux.Flow, tx pgx.Tx, id, kind string) (Token, error) {
@@ -87,13 +99,13 @@ func saveToken(f *flux.Flow, tx pgx.Tx, token Token) error {
 	return nil
 }
 
-func deleteToken(f *flux.Flow, tx pgx.Tx, id string) error {
+func deleteToken(ctx context.Context, tx pgx.Tx, id string) error {
 	sql, args := psql.Delete(
 		dm.From("auth.tokens"),
 		dm.Where(psql.Quote("id").EQ(psql.Arg(id))),
 	).MustBuild()
 
-	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
 		return fmt.Errorf("auth.deleteToken: %w", err)
 	}
 	return nil

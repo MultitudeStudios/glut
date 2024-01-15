@@ -94,10 +94,10 @@ func createUser(s *auth.Service) flux.HandlerFunc {
 		})
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
-				flux.ValidationError(verr)
+				return flux.ValidationError(verr)
 			}
 			if errors.Is(err, auth.ErrUserExists) {
-				flux.NewError("user_exists", http.StatusConflict, "User already exists.")
+				return flux.ExistsError("User already exists.")
 			}
 			return fmt.Errorf("api.createUser: %w", err)
 		}

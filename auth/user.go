@@ -202,13 +202,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 		return User{}, err
 	}
 
-	token := Token{
-		ID:        mustGenerateToken(s.cfg.TokenLength),
-		UserID:    f.Session.User,
-		Kind:      tokenKindVerifyUser,
-		CreatedAt: f.Time,
-		ExpiresAt: f.Time.Add(s.cfg.VerificationTokenDuration),
-	}
+	token := s.createUserVerificationToken(f.Session.User, f.Time)
 	if err := saveToken(f, tx, token); err != nil {
 		return User{}, err
 	}

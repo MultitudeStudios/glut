@@ -28,7 +28,11 @@ var (
 
 	minChangeEmailTokenDuration     = 15 * time.Minute
 	maxChangeEmailTokenDuration     = 24 * time.Hour
-	defaultChangeEmailTokenDuration = 1 * time.Hour
+	defaultChangeEmailTokenDuration = 3 * time.Hour
+
+	minResetPasswordTokenDuration     = 15 * time.Minute
+	maxResetPasswordTokenDuration     = 24 * time.Hour
+	defaultResetPasswordTokenDuration = 3 * time.Hour
 )
 
 // Service...
@@ -49,6 +53,8 @@ type Config struct {
 	VerificationTokenWaitTime time.Duration
 	// ChangeEmailTokenDuration...
 	ChangeEmailTokenDuration time.Duration
+	// ResetPasswordTokenDuration...
+	ResetPasswordTokenDuration time.Duration
 	// PasswordChecker...
 	PasswordChecker PasswordCompareFunc
 }
@@ -63,6 +69,7 @@ func NewService(db *pgxpool.Pool, cfg *Config) *Service {
 	cfg.VerificationTokenDuration = minMaxValue(cfg.VerificationTokenDuration, minVerificationTokenDuration, maxVerificationTokenDuration, defaultVerificationTokenDuration)
 	cfg.VerificationTokenWaitTime = minMaxValue(cfg.VerificationTokenWaitTime, minVerificationTokenWaitTime, maxVerificationTokenWaitTime, defaultVerificationTokenWaitTime)
 	cfg.ChangeEmailTokenDuration = minMaxValue(cfg.ChangeEmailTokenDuration, minChangeEmailTokenDuration, maxChangeEmailTokenDuration, defaultChangeEmailTokenDuration)
+	cfg.ResetPasswordTokenDuration = minMaxValue(cfg.ResetPasswordTokenDuration, minResetPasswordTokenDuration, maxResetPasswordTokenDuration, defaultResetPasswordTokenDuration)
 
 	return &Service{
 		cfg: cfg,

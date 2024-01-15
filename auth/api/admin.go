@@ -29,7 +29,7 @@ func changePassword(s *auth.Service) flux.HandlerFunc {
 				return flux.ValidationError(verr)
 			}
 			if errors.Is(err, auth.ErrInvalidPassword) {
-				return flux.NewError("invalid_password", http.StatusForbidden, "Invalid password.")
+				return ErrInvalidPassword
 			}
 			return fmt.Errorf("api.changePassword: %w", err)
 		}
@@ -62,10 +62,10 @@ func changeEmail(s *auth.Service) flux.HandlerFunc {
 				return flux.UnauthorizedError
 			}
 			if errors.Is(err, auth.ErrInvalidPassword) {
-				return flux.NewError("invalid_password", http.StatusForbidden, "Invalid password.")
+				return ErrInvalidPassword
 			}
 			if errors.Is(err, auth.ErrInvalidToken) {
-				return flux.NewError("invalid_token", http.StatusUnprocessableEntity, "Invalid token.")
+				return ErrInvalidToken
 			}
 			return fmt.Errorf("api.changeEmail: %w", err)
 		}
@@ -91,15 +91,45 @@ func verifyUser(s *auth.Service) flux.HandlerFunc {
 				return flux.UnauthorizedError
 			}
 			if errors.Is(err, auth.ErrInvalidToken) {
-				return flux.NewError("invalid_token", http.StatusUnprocessableEntity, "Invalid token.")
+				return ErrInvalidToken
 			}
 			if errors.Is(err, auth.ErrUserVerified) {
-				return flux.NewError("user_verified", http.StatusConflict, "User already verified.")
+				return ErrUserVerified
 			}
 			if errors.Is(err, auth.ErrTryLater) {
 				return flux.TryLaterError("User verification was initiated recently. Try again later.")
 			}
 			return fmt.Errorf("api.verifyUser: %w", err)
+		}
+		return f.Respond(http.StatusOK, nil)
+	}
+}
+
+func resetPassword(s *auth.Service) flux.HandlerFunc {
+	type request struct {
+		Token    string `json:"token"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	return func(f *flux.Flow) error {
+		var r request
+		if err := f.Bind(&r); err != nil {
+			return err
+		}
+
+		if err := s.ResetPassword(f, &auth.ResetPasswordInput{
+			Token:    r.Token,
+			Email:    r.Email,
+			Password: r.Password,
+		}); err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			if errors.Is(err, auth.ErrInvalidToken) {
+				return ErrInvalidToken
+			}
+			return fmt.Errorf("api.resetPassword: %w", err)
 		}
 		return f.Respond(http.StatusOK, nil)
 	}

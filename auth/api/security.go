@@ -103,7 +103,7 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 				return flux.NotFoundError("User not found.")
 			}
 			if errors.Is(err, auth.ErrBanExists) {
-				return flux.NewError("ban_exists", http.StatusConflict, "Ban already exists.")
+				return flux.ExistsError("Ban already exists.")
 			}
 			return fmt.Errorf("api.banUser: %w", err)
 		}

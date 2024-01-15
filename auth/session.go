@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"glut/common/flux"
@@ -263,7 +264,6 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 	if _, err := tx.Exec(f.Ctx, sql, args...); err != nil {
 		return Session{}, err
 	}
-
 	if err := tx.Commit(f.Ctx); err != nil {
 		return Session{}, err
 	}
@@ -323,4 +323,14 @@ func (s *Service) RenewSession(f *flux.Flow) (time.Time, error) {
 		return time.Time{}, ErrSessionNotFound
 	}
 	return newExpiry, nil
+}
+
+func deleteUserSessions(ctx context.Context, tx pgx.Tx, userID string) error {
+	sql, args := psql.Delete(
+		dm.From("auth.sessions"),
+		dm.Where(psql.Quote("user_id").EQ(psql.Arg(userID))),
+	).MustBuild()
+
+	_, err := tx.Exec(ctx, sql, args...)
+	return err
 }

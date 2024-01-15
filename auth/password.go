@@ -1,8 +1,13 @@
 package auth
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/um"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -34,6 +39,24 @@ func validatePassword(hash, plain string, compareFunc PasswordCompareFunc) error
 	}
 	if !match {
 		return ErrInvalidPassword
+	}
+	return nil
+}
+
+func updateUserPassword(ctx context.Context, tx pgx.Tx, userID, password string) error {
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		return fmt.Errorf("auth.updateUserPassword: %w", err)
+	}
+
+	sql, args := psql.Update(
+		um.Table("auth.users"),
+		um.Set("password_hash").ToArg(passwordHash),
+		um.Where(psql.Quote("id").EQ(psql.Arg(userID))),
+	).MustBuild()
+
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		return fmt.Errorf("auth.updateUserPassword: %w", err)
 	}
 	return nil
 }
