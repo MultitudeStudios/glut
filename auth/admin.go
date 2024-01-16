@@ -34,6 +34,10 @@ type ResetPasswordInput struct {
 	Password string
 }
 
+type ForgotUsernameInput struct {
+	Email string
+}
+
 func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
 	var errs valid.Errors
 	if in.OldPassword == "" {
@@ -382,5 +386,33 @@ func (s *Service) ResetPassword(f *flux.Flow, in *ResetPasswordInput) error {
 	if err := tx.Commit(f.Ctx); err != nil {
 		return err
 	}
+	return nil
+}
+
+// ForgotUsername...
+func (s *Service) ForgotUsername(f *flux.Flow, in *ForgotUsernameInput) error {
+	var errs valid.Errors
+	if in.Email == "" {
+		errs = append(errs, valid.Error{Field: "email", Error: "Required."})
+	}
+	if len(errs) != 0 {
+		return errs
+	}
+
+	sql, args := psql.Select(
+		sm.From("auth.users"),
+		sm.Columns("username"),
+		sm.Where(psql.Quote("email").EQ(psql.Arg(in.Email))),
+	).MustBuild()
+
+	var username string
+	if err := s.db.QueryRow(f.Ctx, sql, args...).Scan(&username); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
+	// TODO: send email with username
 	return nil
 }

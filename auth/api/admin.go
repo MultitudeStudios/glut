@@ -134,3 +134,26 @@ func resetPassword(s *auth.Service) flux.HandlerFunc {
 		return f.Respond(http.StatusOK, nil)
 	}
 }
+
+func forgotUsername(s *auth.Service) flux.HandlerFunc {
+	type request struct {
+		Email string `json:"email"`
+	}
+
+	return func(f *flux.Flow) error {
+		var r request
+		if err := f.Bind(&r); err != nil {
+			return err
+		}
+
+		if err := s.ForgotUsername(f, &auth.ForgotUsernameInput{
+			Email: r.Email,
+		}); err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			return fmt.Errorf("api.forgotUsername: %w", err)
+		}
+		return f.Respond(http.StatusOK, nil)
+	}
+}
