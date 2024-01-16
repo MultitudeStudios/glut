@@ -30,7 +30,7 @@ type VerifyUserInput struct {
 
 type ResetPasswordInput struct {
 	Token    string
-	Email    string
+	Username string
 	Password string
 }
 
@@ -284,7 +284,7 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 		return err
 	}
 
-	// TODO: send email with verification token
+	// TODO: send email with token
 
 	if err := tx.Commit(f.Ctx); err != nil {
 		return err
@@ -343,8 +343,8 @@ func (s *Service) ResetPassword(f *flux.Flow, in *ResetPasswordInput) error {
 	}
 
 	var errs valid.Errors
-	if in.Email == "" {
-		errs = append(errs, valid.Error{Field: "email", Error: "Required."})
+	if in.Username == "" {
+		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
 	}
 	if len(errs) != 0 {
 		return errs
@@ -358,12 +358,13 @@ func (s *Service) ResetPassword(f *flux.Flow, in *ResetPasswordInput) error {
 
 	sql, args := psql.Select(
 		sm.From("auth.users"),
-		sm.Columns("id"),
-		sm.Where(psql.Quote("email").EQ(psql.Arg(in.Email))),
+		sm.Columns("id", "email"),
+		sm.Where(psql.Quote("username").EQ(psql.Arg(in.Username))),
 	).MustBuild()
 
 	var userID string
-	if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&userID); err != nil {
+	var email string
+	if err := tx.QueryRow(f.Ctx, sql, args...).Scan(&userID, &email); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -405,14 +406,23 @@ func (s *Service) ForgotUsername(f *flux.Flow, in *ForgotUsernameInput) error {
 		sm.Where(psql.Quote("email").EQ(psql.Arg(in.Email))),
 	).MustBuild()
 
-	var username string
-	if err := s.db.QueryRow(f.Ctx, sql, args...).Scan(&username); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
+	rows, err := s.db.Query(f.Ctx, sql, args...)
+	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
-	// TODO: send email with username
+	var usernames []string
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			return err
+		}
+		usernames = append(usernames, username)
+	}
+
+	if len(usernames) != 0 {
+		// TODO: send email with usernames
+	}
 	return nil
 }

@@ -108,7 +108,7 @@ func verifyUser(s *auth.Service) flux.HandlerFunc {
 func resetPassword(s *auth.Service) flux.HandlerFunc {
 	type request struct {
 		Token    string `json:"token"`
-		Email    string `json:"email"`
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 
@@ -120,7 +120,7 @@ func resetPassword(s *auth.Service) flux.HandlerFunc {
 
 		if err := s.ResetPassword(f, &auth.ResetPasswordInput{
 			Token:    r.Token,
-			Email:    r.Email,
+			Username: r.Username,
 			Password: r.Password,
 		}); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
