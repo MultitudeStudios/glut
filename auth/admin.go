@@ -14,31 +14,31 @@ import (
 )
 
 type ChangePasswordInput struct {
-	OldPassword string
-	NewPassword string
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
 }
 
 type ChangeEmailInput struct {
-	Token    string
-	Email    string
-	Password string
+	Token    string `json:"token"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type VerifyUserInput struct {
-	Token string
+	Token string `json:"token"`
 }
 
 type ResetPasswordInput struct {
-	Token    string
-	Username string
-	Password string
+	Token    string `json:"token"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type ForgotUsernameInput struct {
-	Email string
+	Email string `json:"email"`
 }
 
-func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
+func (s *Service) ChangePassword(f *flux.Flow, in ChangePasswordInput) error {
 	var errs valid.Errors
 	if in.OldPassword == "" {
 		errs = append(errs, valid.Error{Field: "old_password", Error: "Required."})
@@ -86,7 +86,7 @@ func (s *Service) ChangePassword(f *flux.Flow, in *ChangePasswordInput) error {
 	return nil
 }
 
-func (s *Service) ChangeEmail(f *flux.Flow, in *ChangeEmailInput) error {
+func (s *Service) ChangeEmail(f *flux.Flow, in ChangeEmailInput) error {
 	if in.Token != "" {
 		tx, err := s.db.Begin(f.Ctx)
 		if err != nil {
@@ -203,7 +203,7 @@ func (s *Service) ChangeEmail(f *flux.Flow, in *ChangeEmailInput) error {
 	return nil
 }
 
-func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
+func (s *Service) VerifyUser(f *flux.Flow, in VerifyUserInput) error {
 	if in.Token != "" {
 		tx, err := s.db.Begin(f.Ctx)
 		if err != nil {
@@ -292,7 +292,7 @@ func (s *Service) VerifyUser(f *flux.Flow, in *VerifyUserInput) error {
 	return nil
 }
 
-func (s *Service) ResetPassword(f *flux.Flow, in *ResetPasswordInput) error {
+func (s *Service) ResetPassword(f *flux.Flow, in ResetPasswordInput) error {
 	if in.Token != "" {
 		var errs valid.Errors
 		if in.Password == "" {
@@ -391,7 +391,7 @@ func (s *Service) ResetPassword(f *flux.Flow, in *ResetPasswordInput) error {
 }
 
 // ForgotUsername...
-func (s *Service) ForgotUsername(f *flux.Flow, in *ForgotUsernameInput) error {
+func (s *Service) ForgotUsername(f *flux.Flow, in ForgotUsernameInput) error {
 	var errs valid.Errors
 	if in.Email == "" {
 		errs = append(errs, valid.Error{Field: "email", Error: "Required."})

@@ -10,21 +10,13 @@ import (
 )
 
 func changePassword(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		OldPassword string `json:"old_password"`
-		NewPassword string `json:"new_password"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.ChangePasswordInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		if err := s.ChangePassword(f, &auth.ChangePasswordInput{
-			OldPassword: r.OldPassword,
-			NewPassword: r.NewPassword,
-		}); err != nil {
+		if err := s.ChangePassword(f, in); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
@@ -38,23 +30,13 @@ func changePassword(s *auth.Service) flux.HandlerFunc {
 }
 
 func changeEmail(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		Token    string `json:"token"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.ChangeEmailInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		if err := s.ChangeEmail(f, &auth.ChangeEmailInput{
-			Token:    r.Token,
-			Email:    r.Email,
-			Password: r.Password,
-		}); err != nil {
+		if err := s.ChangeEmail(f, in); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
@@ -74,19 +56,13 @@ func changeEmail(s *auth.Service) flux.HandlerFunc {
 }
 
 func verifyUser(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		Token string `json:"token"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.VerifyUserInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		if err := s.VerifyUser(f, &auth.VerifyUserInput{
-			Token: r.Token,
-		}); err != nil {
+		if err := s.VerifyUser(f, in); err != nil {
 			if errors.Is(err, auth.ErrUnauthorized) {
 				return flux.UnauthorizedError
 			}
@@ -106,23 +82,13 @@ func verifyUser(s *auth.Service) flux.HandlerFunc {
 }
 
 func resetPassword(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		Token    string `json:"token"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.ResetPasswordInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		if err := s.ResetPassword(f, &auth.ResetPasswordInput{
-			Token:    r.Token,
-			Username: r.Username,
-			Password: r.Password,
-		}); err != nil {
+		if err := s.ResetPassword(f, in); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
@@ -136,19 +102,13 @@ func resetPassword(s *auth.Service) flux.HandlerFunc {
 }
 
 func forgotUsername(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		Email string `json:"email"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.ForgotUsernameInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		if err := s.ForgotUsername(f, &auth.ForgotUsernameInput{
-			Email: r.Email,
-		}); err != nil {
+		if err := s.ForgotUsername(f, in); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
