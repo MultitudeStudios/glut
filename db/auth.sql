@@ -8,8 +8,6 @@ CREATE TABLE auth.users (
   created_at timestamptz NOT NULL,
   updated_at timestamptz,
   verified_at timestamptz,
-  created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
-  updated_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
   last_login_at timestamptz,
   last_login_ip text
 );

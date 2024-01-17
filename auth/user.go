@@ -19,36 +19,34 @@ const (
 )
 
 type User struct {
-	ID          string
-	Username    string
-	Email       string
-	Password    string
-	CreatedAt   time.Time
-	UpdatedAt   *time.Time
-	VerifiedAt  *time.Time
-	CreatedBy   *string
-	UpdatedBy   *string
-	LastLoginAt *time.Time
-	LastLoginIP *string
+	ID          string     `json:"id"`
+	Username    string     `json:"username"`
+	Email       string     `json:"email"`
+	Password    string     `json:"-"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+	VerifiedAt  *time.Time `json:"verified_at"`
+	LastLoginAt *time.Time `json:"last_login_at"`
+	LastLoginIP *string    `json:"last_login_ip"`
 }
 
 type UserQuery struct {
-	ID     string
-	Limit  int
-	Offset int
+	ID     string `json:"id"`
+	Limit  int    `json:"limit"`
+	Offset int    `json:"offset"`
 }
 
-type NewUserInput struct {
-	Username string
-	Email    string
-	Password string
+type CreateUserInput struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type DeleteUsersInput struct {
-	IDs []string
+	IDs []string `json:"ids"`
 }
 
-func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
+func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 	var errs valid.Errors
 	if in.ID != "" && !valid.IsUUID(in.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
@@ -71,8 +69,6 @@ func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 			"email",
 			"created_at",
 			"updated_at",
-			"created_by",
-			"updated_by",
 			"last_login_at",
 			"last_login_ip",
 		),
@@ -108,8 +104,6 @@ func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 		var email string
 		var createdAt time.Time
 		var updatedAt *time.Time
-		var createdBy *string
-		var updatedBy *string
 		var lastLoginAt *time.Time
 		var lastLoginIP *string
 
@@ -119,8 +113,6 @@ func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 			&email,
 			&createdAt,
 			&updatedAt,
-			&createdBy,
-			&updatedBy,
 			&lastLoginAt,
 			&lastLoginIP,
 		); err != nil {
@@ -132,8 +124,6 @@ func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 			Email:       email,
 			CreatedAt:   createdAt,
 			UpdatedAt:   updatedAt,
-			CreatedBy:   createdBy,
-			UpdatedBy:   updatedBy,
 			LastLoginAt: lastLoginAt,
 			LastLoginIP: lastLoginIP,
 		})
@@ -144,7 +134,7 @@ func (s *Service) Users(f *flux.Flow, in *UserQuery) ([]User, error) {
 	return users, nil
 }
 
-func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
+func (s *Service) CreateUser(f *flux.Flow, in CreateUserInput) (User, error) {
 	var errs valid.Errors
 	if in.Username == "" {
 		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
@@ -215,7 +205,7 @@ func (s *Service) CreateUser(f *flux.Flow, in *NewUserInput) (User, error) {
 	return user, nil
 }
 
-func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
+func (s *Service) DeleteUsers(f *flux.Flow, in DeleteUsersInput) (int, error) {
 	var errs valid.Errors
 	if len(in.IDs) == 0 {
 		errs = append(errs, valid.Error{Field: "ids", Error: "Required."})

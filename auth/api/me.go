@@ -11,22 +11,8 @@ import (
 )
 
 func myUser(s *auth.Service) flux.HandlerFunc {
-	type response struct {
-		ID          string     `json:"id"`
-		Username    string     `json:"username"`
-		Email       string     `json:"email"`
-		CreatedAt   time.Time  `json:"created_at"`
-		UpdatedAt   *time.Time `json:"updated_at"`
-		CreatedBy   *string    `json:"created_by"`
-		UpdatedBy   *string    `json:"updated_by"`
-		LastLoginAt *time.Time `json:"last_login_at"`
-		LastLoginIP *string    `json:"last_login_ip"`
-	}
-
 	return func(f *flux.Flow) error {
-		users, err := s.Users(f, &auth.UserQuery{
-			ID: f.Session.User,
-		})
+		users, err := s.Users(f, auth.UserQuery{ID: f.Session.User})
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
@@ -36,19 +22,7 @@ func myUser(s *auth.Service) flux.HandlerFunc {
 			}
 			return fmt.Errorf("api.myUser: %w", err)
 		}
-		user := users[0]
-		res := &response{
-			ID:          user.ID,
-			Username:    user.Username,
-			Email:       user.Email,
-			CreatedAt:   user.CreatedAt,
-			UpdatedAt:   user.UpdatedAt,
-			CreatedBy:   user.CreatedBy,
-			UpdatedBy:   user.UpdatedBy,
-			LastLoginAt: user.LastLoginAt,
-			LastLoginIP: user.LastLoginIP,
-		}
-		return f.Respond(http.StatusOK, res)
+		return f.Respond(http.StatusOK, users[0])
 	}
 }
 
@@ -111,7 +85,7 @@ func logout(s *auth.Service) flux.HandlerFunc {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
-			return fmt.Errorf("api.Logout: %w", err)
+			return fmt.Errorf("api.logout: %w", err)
 		}
 		return f.Respond(http.StatusOK, response{count})
 	}
@@ -136,10 +110,7 @@ func renewSession(s *auth.Service) flux.HandlerFunc {
 
 func deleteMyUser(s *auth.Service) flux.HandlerFunc {
 	return func(f *flux.Flow) error {
-		_, err := s.DeleteUsers(f, &auth.DeleteUsersInput{
-			IDs: []string{f.Session.User},
-		})
-		if err != nil {
+		if _, err := s.DeleteUsers(f, auth.DeleteUsersInput{IDs: []string{f.Session.User}}); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
