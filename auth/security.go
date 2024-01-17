@@ -103,7 +103,7 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 	}
 	defer rows.Close()
 
-	var bans []Ban
+	bans := []Ban{}
 	for rows.Next() {
 		var userID string
 		var reason string

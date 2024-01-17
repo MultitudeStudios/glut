@@ -7,84 +7,34 @@ import (
 	"glut/common/flux"
 	"glut/common/valid"
 	"net/http"
-	"time"
 )
 
 func querySessions(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		ID             string `json:"id"`
-		Limit          int    `json:"limit"`
-		Offset         int    `json:"offset"`
-		UserID         string `json:"user_id"`
-		IncludeExpired bool   `json:"include_expired"`
-	}
-
-	type response struct {
-		ID        string    `json:"id"`
-		Token     string    `json:"token"`
-		UserID    string    `json:"user_id"`
-		UserIP    string    `json:"user_ip"`
-		CreatedAt time.Time `json:"created_at"`
-		ExpiresAt time.Time `json:"expires_at"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var q auth.SessionQuery
+		if err := f.Bind(&q); err != nil {
 			return err
 		}
 
-		sessions, err := s.Sessions(f, &auth.SessionQuery{
-			ID:             r.ID,
-			Limit:          r.Limit,
-			Offset:         r.Offset,
-			UserID:         r.UserID,
-			IncludeExpired: r.IncludeExpired,
-		})
+		sessions, err := s.Sessions(f, q)
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
 			return fmt.Errorf("api.QuerySessions: %w", err)
 		}
-
-		res := []response{}
-		for _, sess := range sessions {
-			res = append(res, response{
-				ID:        sess.ID,
-				Token:     sess.Token,
-				UserID:    sess.UserID,
-				UserIP:    sess.UserIP,
-				CreatedAt: sess.CreatedAt,
-				ExpiresAt: sess.ExpiresAt,
-			})
-		}
-		return f.Respond(http.StatusOK, res)
+		return f.Respond(http.StatusOK, sessions)
 	}
 }
 
 func createSession(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-
-	type response struct {
-		ID        string    `json:"id"`
-		Token     string    `json:"token"`
-		ExpiresAt time.Time `json:"expires_at"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var creds auth.Credentials
+		if err := f.Bind(&creds); err != nil {
 			return err
 		}
 
-		sess, err := s.CreateSession(f, &auth.Credentials{
-			Username: r.Username,
-			Password: r.Password,
-		})
+		sess, err := s.CreateSession(f, creds)
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
@@ -100,36 +50,22 @@ func createSession(s *auth.Service) flux.HandlerFunc {
 			}
 			return fmt.Errorf("api.createSession: %w", err)
 		}
-
-		res := &response{
-			ID:        sess.ID,
-			Token:     sess.Token,
-			ExpiresAt: sess.ExpiresAt,
-		}
-		return f.Respond(http.StatusOK, res)
+		return f.Respond(http.StatusOK, sess)
 	}
 }
 
 func clearSessions(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		IDs    []string `json:"ids"`
-		UserID string   `json:"user_id"`
-	}
-
 	type response struct {
 		Count int `json:"count"`
 	}
 
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.ClearSessionInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		count, err := s.ClearSessions(f, &auth.ClearSessionInput{
-			IDs:    r.IDs,
-			UserID: r.UserID,
-		})
+		count, err := s.ClearSessions(f, in)
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)

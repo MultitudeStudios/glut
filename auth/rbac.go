@@ -96,7 +96,7 @@ func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
 	}
 	defer rows.Close()
 
-	var roles []Role
+	roles := []Role{}
 	for rows.Next() {
 		var id string
 		var name string

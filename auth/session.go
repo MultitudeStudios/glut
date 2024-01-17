@@ -25,33 +25,37 @@ const (
 )
 
 type Session struct {
-	ID        string
-	Token     string
-	UserID    string
-	UserIP    string
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	ID        string    `json:"id"`
+	Token     string    `json:"token"`
+	UserID    string    `json:"user_id"`
+	UserIP    string    `json:"user_ip"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 type SessionQuery struct {
-	ID             string
-	UserID         string
-	Limit          int
-	Offset         int
-	IncludeExpired bool
+	ID             string `json:"id"`
+	UserID         string `json:"user_id"`
+	Limit          int    `json:"limit"`
+	Offset         int    `json:"offset"`
+	IncludeExpired bool   `json:"include_expired"`
 }
 
 type Credentials struct {
-	Username string
-	Password string
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type LogoutInput struct {
+	IDs []string `json:"ids"`
 }
 
 type ClearSessionInput struct {
-	IDs    []string
-	UserID string
+	IDs    []string `json:"ids"`
+	UserID string   `json:"user_id"`
 }
 
-func (s *Service) Sessions(f *flux.Flow, in *SessionQuery) ([]Session, error) {
+func (s *Service) Sessions(f *flux.Flow, in SessionQuery) ([]Session, error) {
 	var errs valid.Errors
 	if in.ID != "" && !valid.IsUUID(in.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
@@ -114,7 +118,7 @@ func (s *Service) Sessions(f *flux.Flow, in *SessionQuery) ([]Session, error) {
 	}
 	defer rows.Close()
 
-	var sessions []Session
+	sessions := []Session{}
 	for rows.Next() {
 		var id string
 		var token string
@@ -148,7 +152,7 @@ func (s *Service) Sessions(f *flux.Flow, in *SessionQuery) ([]Session, error) {
 	return sessions, nil
 }
 
-func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) {
+func (s *Service) CreateSession(f *flux.Flow, in Credentials) (Session, error) {
 	var errs valid.Errors
 	if in.Username == "" {
 		errs = append(errs, valid.Error{Field: "username", Error: "Required."})
@@ -270,7 +274,7 @@ func (s *Service) CreateSession(f *flux.Flow, in *Credentials) (Session, error) 
 	return sess, nil
 }
 
-func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error) {
+func (s *Service) ClearSessions(f *flux.Flow, in ClearSessionInput) (int, error) {
 	var errs valid.Errors
 	if len(in.IDs) == 0 && in.UserID == "" {
 		errs = append(errs, valid.Error{Error: "Input cannot be empty."})

@@ -97,7 +97,7 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 	}
 	defer rows.Close()
 
-	var users []User
+	users := []User{}
 	for rows.Next() {
 		var id string
 		var username string
