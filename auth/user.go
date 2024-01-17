@@ -231,7 +231,7 @@ func (s *Service) DeleteUsers(f *flux.Flow, in *DeleteUsersInput) (int, error) {
 	if in.IDs != nil {
 		q.Apply(dm.Where(
 			psql.Quote("id").In(
-				psql.Arg(sqlutil.InSlice(in.IDs)...)),
+				psql.Arg(sqlutil.AnySlice(in.IDs)...)),
 		))
 	}
 	sql, args := q.MustBuild()

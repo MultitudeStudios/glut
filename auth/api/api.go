@@ -34,4 +34,7 @@ func Handler(s *flux.Server, service *auth.Service) {
 	s.Handle("auth.security.bans", queryBans(service), &flux.Options{})
 	s.Handle("auth.security.banUser", banUser(service), &flux.Options{})
 	s.Handle("auth.security.unbanUser", unbanUser(service), &flux.Options{})
+
+	// RBAC API
+	s.Handle("auth.rbac.roles", queryRoles(service), &flux.Options{})
 }

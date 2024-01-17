@@ -16,4 +16,5 @@ var (
 	ErrInvalidToken       = errors.New("invalid token")
 	ErrBanNotFound        = errors.New("ban not found")
 	ErrBanExists          = errors.New("ban already exists")
+	ErrRoleNotFound       = errors.New("role not found")
 )

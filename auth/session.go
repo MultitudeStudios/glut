@@ -289,7 +289,7 @@ func (s *Service) ClearSessions(f *flux.Flow, in *ClearSessionInput) (int, error
 	if in.IDs != nil {
 		q.Apply(dm.Where(
 			psql.Quote("id").In(
-				psql.Arg(sqlutil.InSlice(in.IDs)...)),
+				psql.Arg(sqlutil.AnySlice(in.IDs)...)),
 		))
 	}
 	if in.UserID != "" {
