@@ -24,9 +24,9 @@ type Role struct {
 }
 
 type RoleMeta struct {
-	CreatedByID       string  `json:"created_by_id"`
-	CreatedByUsername string  `json:"created_by_username"`
-	CreatedByEmail    string  `json:"created_by_email"`
+	CreatedByID       *string `json:"created_by_id"`
+	CreatedByUsername *string `json:"created_by_username"`
+	CreatedByEmail    *string `json:"created_by_email"`
 	UpdatedByID       *string `json:"updated_by_id"`
 	UpdatedByUsername *string `json:"updated_by_username"`
 	UpdatedByEmail    *string `json:"updated_by_email"`
@@ -103,9 +103,9 @@ func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
 		var description string
 		var createdAt time.Time
 		var updatedAt *time.Time
-		var createdByID string
-		var createdByUsername string
-		var createdByEmail string
+		var createdByID *string
+		var createdByUsername *string
+		var createdByEmail *string
 		var updatedByID *string
 		var updatedByUsername *string
 		var updatedByEmail *string

@@ -11,3 +11,6 @@ INSERT INTO auth.sessions (id, token, user_id, user_ip, session_number, created_
 INSERT INTO auth.roles (id, name, description, created_at, created_by) VALUES
     ('db531eca-1a7a-4768-9652-994f719b567e', 'admin', 'For do admin things.', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933'),
     ('0f5ac467-5941-4cc3-9352-dbb2ef3ea3e8', 'moderator', 'For do mod things.', now(), 'f2fb78ed-8e17-44d3-b46d-349a78bf7014');
+
+INSERT INTO auth.bans (user_id, reason, description, banned_by, banned_at, unbanned_at) VALUES
+    ('f2fb78ed-8e17-44d3-b46d-349a78bf7014', 'spam', null, '0b73f55e-bec8-44c1-a00d-645ad7319933', now(), now());

@@ -18,34 +18,41 @@ const (
 )
 
 type Ban struct {
-	UserID      string
-	Reason      string
-	Description *string
-	BannedBy    *string
-	BannedAt    time.Time
-	UnbannedAt  time.Time
+	UserID      string    `json:"user_id"`
+	Reason      string    `json:"reason"`
+	Description *string   `json:"description"`
+	BannedAt    time.Time `json:"banned_at"`
+	UnbannedAt  time.Time `json:"unbanned_at"`
+	Meta        *BanMeta  `json:"meta,omitempty"`
+}
+
+type BanMeta struct {
+	BannedByID       *string `json:"banned_by_id"`
+	BannedByUsername *string `json:"banned_by_username"`
+	BannedByEmail    *string `json:"banned_by_email"`
 }
 
 type BanQuery struct {
-	UserID         string
-	Limit          int
-	Offset         int
-	IncludeExpired bool
+	UserID         string `json:"user_id"`
+	Limit          int    `json:"limit"`
+	Offset         int    `json:"offset"`
+	Detailed       bool   `json:"detailed"`
+	IncludeExpired bool   `json:"include_expired"`
 }
 
 type BanUserInput struct {
-	UserID      string
-	Reason      string
-	Description *string
-	Duration    int64
-	Replace     bool
+	UserID      string  `json:"user_id"`
+	Reason      string  `json:"reason"`
+	Description *string `json:"description"`
+	Duration    int64   `json:"duration"`
+	Replace     bool    `json:"replace"`
 }
 
 type UnbanUserInput struct {
-	UserID string
+	UserID string `json:"user_id"`
 }
 
-func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
+func (s *Service) Bans(f *flux.Flow, in BanQuery) ([]Ban, error) {
 	var errs valid.Errors
 	if in.UserID != "" && !valid.IsUUID(in.UserID) {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Invalid id."})
@@ -61,17 +68,21 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 		in.Offset = 0
 	}
 
+	cols := []any{"b.user_id", "b.reason", "b.description", "b.banned_at", "b.unbanned_at"}
+	if in.Detailed {
+		cols = append(cols, "bb.id", "bb.username", "bb.email")
+	}
 	q := psql.Select(
-		sm.Columns(
-			"user_id",
-			"reason",
-			"description",
-			"banned_by",
-			"banned_at",
-			"unbanned_at",
-		),
-		sm.From("auth.bans"),
+		sm.Columns(cols...),
+		sm.From("auth.bans").As("b"),
 	)
+	if in.Detailed {
+		q.Apply(
+			sm.LeftJoin("auth.users").As("bb").OnEQ(
+				psql.Raw("b.banned_by"), psql.Raw("bb.id"),
+			),
+		)
+	}
 	if in.UserID != "" {
 		q.Apply(
 			sm.Where(psql.Quote("user_id").EQ(psql.Arg(in.UserID))),
@@ -108,28 +119,34 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 		var userID string
 		var reason string
 		var description *string
-		var bannedBy *string
 		var bannedAt time.Time
 		var unbannedAt time.Time
+		var bannedByID *string
+		var bannedByUsername *string
+		var bannedByEmail *string
 
-		if err := rows.Scan(
-			&userID,
-			&reason,
-			&description,
-			&bannedBy,
-			&bannedAt,
-			&unbannedAt,
-		); err != nil {
+		dest := []any{&userID, &reason, &description, &bannedAt, &unbannedAt}
+		if in.Detailed {
+			dest = append(dest, &bannedByID, &bannedByUsername, &bannedByEmail)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
-		bans = append(bans, Ban{
+		ban := Ban{
 			UserID:      userID,
 			Reason:      reason,
 			Description: description,
-			BannedBy:    bannedBy,
 			BannedAt:    bannedAt,
 			UnbannedAt:  unbannedAt,
-		})
+		}
+		if in.Detailed {
+			ban.Meta = &BanMeta{
+				BannedByID:       bannedByID,
+				BannedByUsername: bannedByUsername,
+				BannedByEmail:    bannedByEmail,
+			}
+		}
+		bans = append(bans, ban)
 	}
 	if in.UserID != "" && len(bans) == 0 {
 		return nil, ErrBanNotFound
@@ -137,7 +154,7 @@ func (s *Service) Bans(f *flux.Flow, in *BanQuery) ([]Ban, error) {
 	return bans, nil
 }
 
-func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
+func (s *Service) BanUser(f *flux.Flow, in BanUserInput) (Ban, error) {
 	var errs valid.Errors
 	if in.UserID == "" {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Required."})
@@ -205,14 +222,13 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 		UserID:      in.UserID,
 		Reason:      in.Reason,
 		Description: in.Description,
-		BannedBy:    &f.Session.User,
 		BannedAt:    f.Time,
 		UnbannedAt:  unbannedAt,
 	}
 
 	q := psql.Insert(
 		im.Into("auth.bans", "user_id", "reason", "description", "banned_by", "banned_at", "unbanned_at"),
-		im.Values(psql.Arg(ban.UserID, ban.Reason, ban.Description, ban.BannedBy, ban.BannedAt, ban.UnbannedAt)),
+		im.Values(psql.Arg(ban.UserID, ban.Reason, ban.Description, f.Session.User, ban.BannedAt, ban.UnbannedAt)),
 	)
 	if !banExists || in.Replace {
 		q.Apply(
@@ -237,7 +253,7 @@ func (s *Service) BanUser(f *flux.Flow, in *BanUserInput) (Ban, error) {
 	return ban, nil
 }
 
-func (s *Service) UnbanUser(f *flux.Flow, in *UnbanUserInput) error {
+func (s *Service) UnbanUser(f *flux.Flow, in UnbanUserInput) error {
 	var errs valid.Errors
 	if in.UserID == "" {
 		errs = append(errs, valid.Error{Field: "user_id", Error: "Required."})

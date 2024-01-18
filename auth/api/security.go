@@ -7,38 +7,16 @@ import (
 	"glut/common/flux"
 	"glut/common/valid"
 	"net/http"
-	"time"
 )
 
 func queryBans(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		UserID         string `json:"user_id"`
-		Limit          int    `json:"limit"`
-		Offset         int    `json:"offset"`
-		IncludeExpired bool   `json:"include_expired"`
-	}
-
-	type response struct {
-		UserID      string    `json:"user_id"`
-		Reason      string    `json:"reason"`
-		Description *string   `json:"description"`
-		BannedBy    *string   `json:"banned_by"`
-		BannedAt    time.Time `json:"banned_at"`
-		UnbannedAt  time.Time `json:"unbanned_at"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.BanQuery
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		bans, err := s.Bans(f, &auth.BanQuery{
-			UserID:         r.UserID,
-			Limit:          r.Limit,
-			Offset:         r.Offset,
-			IncludeExpired: r.IncludeExpired,
-		})
+		bans, err := s.Bans(f, in)
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
@@ -48,53 +26,18 @@ func queryBans(s *auth.Service) flux.HandlerFunc {
 			}
 			return fmt.Errorf("api.queryBans: %w", err)
 		}
-
-		res := []response{}
-		for _, ban := range bans {
-			res = append(res, response{
-				UserID:      ban.UserID,
-				Reason:      ban.Reason,
-				Description: ban.Description,
-				BannedBy:    ban.BannedBy,
-				BannedAt:    ban.BannedAt,
-				UnbannedAt:  ban.UnbannedAt,
-			})
-		}
-		return f.Respond(http.StatusOK, res)
+		return f.Respond(http.StatusOK, bans)
 	}
 }
 
 func banUser(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		UserID      string  `json:"user_id"`
-		Reason      string  `json:"reason"`
-		Description *string `json:"description"`
-		Duration    int64   `json:"duration"`
-		Replace     bool    `json:"replace"`
-	}
-
-	type response struct {
-		UserID      string    `json:"user_id"`
-		Reason      string    `json:"reason"`
-		Description *string   `json:"description"`
-		BannedBy    *string   `json:"banned_by"`
-		BannedAt    time.Time `json:"banned_at"`
-		UnbannedAt  time.Time `json:"unbanned_at"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.BanUserInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		ban, err := s.BanUser(f, &auth.BanUserInput{
-			UserID:      r.UserID,
-			Reason:      r.Reason,
-			Description: r.Description,
-			Duration:    r.Duration,
-			Replace:     r.Replace,
-		})
+		ban, err := s.BanUser(f, in)
 		if err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
@@ -107,33 +50,18 @@ func banUser(s *auth.Service) flux.HandlerFunc {
 			}
 			return fmt.Errorf("api.banUser: %w", err)
 		}
-
-		res := response{
-			UserID:      ban.UserID,
-			Reason:      ban.Reason,
-			Description: ban.Description,
-			BannedBy:    ban.BannedBy,
-			BannedAt:    ban.BannedAt,
-			UnbannedAt:  ban.UnbannedAt,
-		}
-		return f.Respond(http.StatusOK, res)
+		return f.Respond(http.StatusOK, ban)
 	}
 }
 
 func unbanUser(s *auth.Service) flux.HandlerFunc {
-	type request struct {
-		UserID string `json:"user_id"`
-	}
-
 	return func(f *flux.Flow) error {
-		var r request
-		if err := f.Bind(&r); err != nil {
+		var in auth.UnbanUserInput
+		if err := f.Bind(&in); err != nil {
 			return err
 		}
 
-		if err := s.UnbanUser(f, &auth.UnbanUserInput{
-			UserID: r.UserID,
-		}); err != nil {
+		if err := s.UnbanUser(f, in); err != nil {
 			if verr, ok := err.(valid.Errors); ok {
 				return flux.ValidationError(verr)
 			}
