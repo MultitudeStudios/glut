@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"glut/common/flux"
 	"glut/common/sqlutil"
 	"glut/common/valid"
@@ -31,9 +32,11 @@ type User struct {
 }
 
 type UserQuery struct {
-	ID     string `json:"id"`
-	Limit  int    `json:"limit"`
-	Offset int    `json:"offset"`
+	ID       string `json:"id"`
+	Limit    int    `json:"limit"`
+	Offset   int    `json:"offset"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
 }
 
 type CreateUserInput struct {
@@ -77,6 +80,16 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 	if in.ID != "" {
 		q.Apply(
 			sm.Where(psql.Quote("id").EQ(psql.Arg(in.ID))),
+		)
+	}
+	if in.Email != "" {
+		q.Apply(
+			sm.Where(psql.Quote("email").ILike(psql.Arg(fmt.Sprintf("%%%s%%", in.Email)))),
+		)
+	}
+	if in.Username != "" {
+		q.Apply(
+			sm.Where(psql.Quote("username").ILike(psql.Arg(fmt.Sprintf("%%%s%%", in.Username)))),
 		)
 	}
 	if in.Limit != 0 {
@@ -150,16 +163,15 @@ func (s *Service) CreateUser(f *flux.Flow, in CreateUserInput) (User, error) {
 	}
 
 	q := `
-	SELECT
-	EXISTS (
+	SELECT EXISTS (
 		SELECT id FROM auth.users WHERE username = $1
 	);`
 
-	var exists bool
-	if err := s.db.QueryRow(f.Ctx, q, in.Username).Scan(&exists); err != nil {
+	var userExists bool
+	if err := s.db.QueryRow(f.Ctx, q, in.Username).Scan(&userExists); err != nil {
 		return User{}, err
 	}
-	if exists {
+	if userExists {
 		return User{}, ErrUserExists
 	}
 
