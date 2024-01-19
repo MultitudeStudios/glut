@@ -73,7 +73,6 @@ func (s *Service) ChangePassword(f *flux.Flow, in ChangePasswordInput) error {
 	if err := validatePassword(passwordHash, in.OldPassword, s.cfg.PasswordChecker); err != nil {
 		return err
 	}
-
 	if err := updateUserPassword(f.Ctx, tx, f.Session.User, in.NewPassword); err != nil {
 		return err
 	}

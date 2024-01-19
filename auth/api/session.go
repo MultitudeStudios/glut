@@ -43,7 +43,7 @@ func createSession(s *auth.Service) flux.HandlerFunc {
 				return ErrInvalidCredentials
 			}
 			if errors.Is(err, auth.ErrUserBanned) {
-				return auth.ErrUserBanned
+				return ErrUserBanned
 			}
 			if errors.Is(err, auth.ErrSessionLimit) {
 				return ErrSessionLimit

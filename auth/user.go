@@ -63,7 +63,6 @@ func getUserSort(value string) (string, string, bool) {
 	if value == "" {
 		return defaultUserSortBy, defaultUserSortDir, true
 	}
-
 	parts := strings.Split(value, ",")
 	if len(parts) != 2 {
 		return "", "", false
@@ -141,8 +140,6 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 		)
 	}
 	sql, args := q.MustBuild()
-
-	fmt.Println(sql)
 
 	rows, err := s.db.Query(f.Ctx, sql, args...)
 	if err != nil {
