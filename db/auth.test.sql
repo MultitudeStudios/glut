@@ -1,9 +1,9 @@
 -- password: password12345
-INSERT INTO auth.users (id, username, email, password_hash, created_at) VALUES
-    ('0b73f55e-bec8-44c1-a00d-645ad7319933', 'glut', 'glut@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now()),
-    ('f2fb78ed-8e17-44d3-b46d-349a78bf7014', 'glut2', 'glut@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now()),
-    ('141ce8e4-c0b2-4b8e-80a3-72c1237fd19a', 'glut3', 'glut2@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now()),
-    ('41e68f67-db31-4a8f-a1e9-31d3fa732a32', 'glut4', 'GLUT4@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now());
+INSERT INTO auth.users (id, username, email, password_hash, created_at, last_login_at, last_login_ip) VALUES
+    ('0b73f55e-bec8-44c1-a00d-645ad7319933', 'glut', 'glut@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now() - INTERVAL '15 days', now() - INTERVAL '5 days', '0.0.0.0'),
+    ('f2fb78ed-8e17-44d3-b46d-349a78bf7014', 'glut2', 'glut@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now() - INTERVAL '30 days', null, null),
+    ('141ce8e4-c0b2-4b8e-80a3-72c1237fd19a', 'glut3', 'glut2@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now() - INTERVAL '60 days', null, null),
+    ('41e68f67-db31-4a8f-a1e9-31d3fa732a32', 'glut4', 'GLUT4@example.com', '$2a$10$jD1CD9T2Gjy.ziO/raY6XOettyIdp2il8oHwcszQY3uAWdCp95pq6', now() - INTERVAL '120 days', null, null);
 
 INSERT INTO auth.sessions (id, token, user_id, user_ip, session_number, created_at, expires_at) VALUES
     ('d68ff336-0ae0-447c-aa18-65dad1409b38', 'AOOrbNViX4BTpXhr3Ffcq1EAw5dhoHTF', '0b73f55e-bec8-44c1-a00d-645ad7319933', '0.0.0.0', 1, now(), now() + INTERVAL '30 days'),

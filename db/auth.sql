@@ -6,7 +6,6 @@ CREATE TABLE auth.users (
   email text NOT NULL,
   password_hash text NOT NULL,
   created_at timestamptz NOT NULL,
-  updated_at timestamptz,
   verified_at timestamptz,
   last_login_at timestamptz,
   last_login_ip text

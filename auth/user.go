@@ -5,6 +5,7 @@ import (
 	"glut/common/flux"
 	"glut/common/sqlutil"
 	"glut/common/valid"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,8 @@ import (
 const (
 	defaultUserQueryLimit = 20
 	maxUserQueryLimit     = 100
+	defaultUserSortBy     = "created_at"
+	defaultUserSortDir    = sqlutil.SortDirAsc
 )
 
 type User struct {
@@ -25,7 +28,6 @@ type User struct {
 	Email       string     `json:"email"`
 	Password    string     `json:"-"`
 	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   *time.Time `json:"updated_at"`
 	VerifiedAt  *time.Time `json:"verified_at"`
 	LastLoginAt *time.Time `json:"last_login_at"`
 	LastLoginIP *string    `json:"last_login_ip"`
@@ -35,6 +37,7 @@ type UserQuery struct {
 	ID       string `json:"id"`
 	Limit    int    `json:"limit"`
 	Offset   int    `json:"offset"`
+	Sort     string `json:"sort"`
 	Email    string `json:"email"`
 	Username string `json:"username"`
 }
@@ -49,10 +52,41 @@ type DeleteUsersInput struct {
 	IDs []string `json:"ids"`
 }
 
+var userSortByMap map[string]struct{} = map[string]struct{}{
+	"username":      {},
+	"email":         {},
+	"created_at":    {},
+	"last_login_at": {},
+}
+
+func getUserSort(value string) (string, string, bool) {
+	if value == "" {
+		return defaultUserSortBy, defaultUserSortDir, true
+	}
+
+	parts := strings.Split(value, ",")
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	sortBy := parts[0]
+	sortDir := strings.ToUpper(parts[1])
+	if _, ok := userSortByMap[sortBy]; !ok {
+		return "", "", false
+	}
+	if sortDir != sqlutil.SortDirAsc && sortDir != sqlutil.SortDirDesc {
+		return "", "", false
+	}
+	return sortBy, sortDir, true
+}
+
 func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 	var errs valid.Errors
 	if in.ID != "" && !valid.IsUUID(in.ID) {
 		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
+	}
+	sortBy, sortDir, ok := getUserSort(in.Sort)
+	if !ok {
+		errs = append(errs, valid.Error{Field: "sort", Error: "Invalid sort."})
 	}
 	if len(errs) != 0 {
 		return nil, errs
@@ -71,7 +105,6 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 			"username",
 			"email",
 			"created_at",
-			"updated_at",
 			"last_login_at",
 			"last_login_ip",
 		),
@@ -92,6 +125,11 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 			sm.Where(psql.Quote("username").ILike(psql.Arg(fmt.Sprintf("%%%s%%", in.Username)))),
 		)
 	}
+	if sortDir == sqlutil.SortDirAsc {
+		q.Apply(sm.OrderBy(sortBy).Asc())
+	} else {
+		q.Apply(sm.OrderBy(sortBy).Desc())
+	}
 	if in.Limit != 0 {
 		q.Apply(
 			sm.Limit(in.Limit),
@@ -103,6 +141,8 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 		)
 	}
 	sql, args := q.MustBuild()
+
+	fmt.Println(sql)
 
 	rows, err := s.db.Query(f.Ctx, sql, args...)
 	if err != nil {
@@ -116,7 +156,6 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 		var username string
 		var email string
 		var createdAt time.Time
-		var updatedAt *time.Time
 		var lastLoginAt *time.Time
 		var lastLoginIP *string
 
@@ -125,7 +164,6 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 			&username,
 			&email,
 			&createdAt,
-			&updatedAt,
 			&lastLoginAt,
 			&lastLoginIP,
 		); err != nil {
@@ -136,7 +174,6 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 			Username:    username,
 			Email:       email,
 			CreatedAt:   createdAt,
-			UpdatedAt:   updatedAt,
 			LastLoginAt: lastLoginAt,
 			LastLoginIP: lastLoginIP,
 		})
