@@ -39,4 +39,5 @@ func Handler(s *flux.Server, service *auth.Service) {
 	s.Handle("auth.rbac.roles", queryRoles(service), &flux.Options{})
 	s.Handle("auth.rbac.createRole", createRole(service), &flux.Options{})
 	s.Handle("auth.rbac.updateRole", updateRole(service), &flux.Options{})
+	s.Handle("auth.rbac.deleteRole", deleteRole(service), &flux.Options{})
 }

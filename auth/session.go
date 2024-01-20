@@ -300,8 +300,8 @@ func (s *Service) ClearSessions(f *flux.Flow, in ClearSessionInput) (int, error)
 			psql.Quote("user_id").EQ(psql.Arg(in.UserID)),
 		))
 	}
-
 	sql, args := q.MustBuild()
+
 	res, err := s.db.Exec(f.Ctx, sql, args...)
 	if err != nil {
 		return 0, err

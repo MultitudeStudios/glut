@@ -73,3 +73,25 @@ func updateRole(s *auth.Service) flux.HandlerFunc {
 		return f.Respond(http.StatusOK, nil)
 	}
 }
+
+func deleteRole(s *auth.Service) flux.HandlerFunc {
+	type response struct {
+		Count int `json:"count"`
+	}
+
+	return func(f *flux.Flow) error {
+		var in auth.DeleteRoleInput
+		if err := f.Bind(&in); err != nil {
+			return err
+		}
+
+		count, err := s.DeleteRole(f, in)
+		if err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			return fmt.Errorf("api.deleteRole: %w", err)
+		}
+		return f.Respond(http.StatusOK, &response{count})
+	}
+}

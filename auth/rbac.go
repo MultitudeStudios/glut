@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
@@ -52,6 +53,10 @@ type UpdateRoleInput struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+}
+
+type DeleteRoleInput struct {
+	IDs []string `json:"ids"`
 }
 
 func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
@@ -259,4 +264,32 @@ func (s *Service) UpdateRole(f *flux.Flow, in UpdateRoleInput) error {
 		return ErrRoleNotFound
 	}
 	return nil
+}
+
+func (s *Service) DeleteRole(f *flux.Flow, in DeleteRoleInput) (int, error) {
+	var errs valid.Errors
+	if len(in.IDs) == 0 {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Required."})
+	}
+	if !valid.IsUUIDSlice(in.IDs) {
+		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})
+	}
+	if len(errs) != 0 {
+		return 0, errs
+	}
+
+	sql, args := psql.Delete(
+		dm.From("auth.roles"),
+		dm.Where(
+			psql.Quote("id").In(
+				psql.Arg(sqlutil.AnySlice(in.IDs)...),
+			),
+		),
+	).MustBuild()
+
+	res, err := s.db.Exec(f.Ctx, sql, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(res.RowsAffected()), nil
 }
