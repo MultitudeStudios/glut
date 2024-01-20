@@ -14,7 +14,7 @@ CREATE TABLE auth.users (
 CREATE TABLE auth.roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text UNIQUE NOT NULL,
-  description text NOT NULL,
+  description text,
   created_at timestamptz NOT NULL,
   updated_at timestamptz,
   created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,

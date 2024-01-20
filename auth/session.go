@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"glut/common/flux"
 	"glut/common/sqlutil"
 	"glut/common/valid"
@@ -205,7 +204,7 @@ func (s *Service) CreateSession(f *flux.Flow, in Credentials) (Session, error) {
 	).MustBuild()
 
 	var isBanned bool
-	if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&isBanned); err != nil {
+	if err := tx.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&isBanned); err != nil {
 		return Session{}, err
 	}
 	if isBanned {

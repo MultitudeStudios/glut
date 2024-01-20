@@ -37,4 +37,5 @@ func Handler(s *flux.Server, service *auth.Service) {
 
 	// RBAC API
 	s.Handle("auth.rbac.roles", queryRoles(service), &flux.Options{})
+	s.Handle("auth.rbac.createRole", createRole(service), &flux.Options{})
 }

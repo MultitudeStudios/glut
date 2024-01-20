@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"fmt"
 	"glut/common/flux"
+	"glut/common/sqlutil"
 	"glut/common/valid"
 	"time"
 
@@ -190,7 +190,7 @@ func (s *Service) BanUser(f *flux.Flow, in BanUserInput) (Ban, error) {
 	).MustBuild()
 
 	var userExists bool
-	if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&userExists); err != nil {
+	if err := tx.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&userExists); err != nil {
 		return Ban{}, err
 	}
 	if !userExists {
@@ -211,7 +211,7 @@ func (s *Service) BanUser(f *flux.Flow, in BanUserInput) (Ban, error) {
 	).MustBuild()
 
 	var banExists bool
-	if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&banExists); err != nil {
+	if err := tx.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&banExists); err != nil {
 		return Ban{}, err
 	}
 	if banExists && !in.Replace {

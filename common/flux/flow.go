@@ -29,15 +29,17 @@ type Flow struct {
 func (f *Flow) Bind(v any) error {
 	dec := json.NewDecoder(f.r.Body)
 	dec.DisallowUnknownFields()
-	err := dec.Decode(v)
-	if ute, ok := err.(*json.UnmarshalTypeError); ok {
-		return InvalidError("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset).SetInternal(err)
-	} else if se, ok := err.(*json.SyntaxError); ok {
-		return InvalidError("Syntax error: offset=%v, error=%v", se.Offset, se.Error()).SetInternal(err)
-	} else if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return InvalidError("Invalid input.").SetInternal(err)
+	if err := dec.Decode(v); err != nil {
+		if ute, ok := err.(*json.UnmarshalTypeError); ok {
+			return InvalidError("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset).SetInternal(err)
+		} else if se, ok := err.(*json.SyntaxError); ok {
+			return InvalidError("Syntax error: offset=%v, error=%v", se.Offset, se.Error()).SetInternal(err)
+		} else if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return InvalidError("Invalid input.").SetInternal(err)
+		}
+		return err
 	}
-	return err
+	return nil
 }
 
 // Respond...

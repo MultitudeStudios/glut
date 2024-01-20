@@ -196,13 +196,14 @@ func (s *Service) CreateUser(f *flux.Flow, in CreateUserInput) (User, error) {
 		return User{}, errs
 	}
 
-	q := `
-	SELECT EXISTS (
-		SELECT id FROM auth.users WHERE username = $1
-	);`
+	sql, args := psql.Select(
+		sm.Columns("id"),
+		sm.From("auth.users"),
+		sm.Where(psql.Quote("username").EQ(psql.Arg(in.Username))),
+	).MustBuild()
 
 	var userExists bool
-	if err := s.db.QueryRow(f.Ctx, q, in.Username).Scan(&userExists); err != nil {
+	if err := s.db.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&userExists); err != nil {
 		return User{}, err
 	}
 	if userExists {
@@ -227,7 +228,7 @@ func (s *Service) CreateUser(f *flux.Flow, in CreateUserInput) (User, error) {
 	}
 	defer tx.Rollback(f.Ctx)
 
-	sql, args := psql.Insert(
+	sql, args = psql.Insert(
 		im.Into("auth.users",
 			"id", "username", "email", "password_hash", "created_at",
 		),

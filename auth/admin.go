@@ -2,8 +2,8 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"glut/common/flux"
+	"glut/common/sqlutil"
 	"glut/common/valid"
 	"time"
 
@@ -320,7 +320,7 @@ func (s *Service) ResetPassword(f *flux.Flow, in ResetPasswordInput) error {
 		).MustBuild()
 
 		var userExists bool
-		if err := tx.QueryRow(f.Ctx, fmt.Sprintf("SELECT EXISTS (%s)", sql), args...).Scan(&userExists); err != nil {
+		if err := tx.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&userExists); err != nil {
 			return err
 		}
 		if !userExists {

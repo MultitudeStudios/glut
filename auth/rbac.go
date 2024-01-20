@@ -2,10 +2,13 @@ package auth
 
 import (
 	"glut/common/flux"
+	"glut/common/sqlutil"
 	"glut/common/valid"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 )
 
@@ -17,7 +20,7 @@ const (
 type Role struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
-	Description string     `json:"description"`
+	Description *string    `json:"description"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 	Meta        *RoleMeta  `json:"meta,omitempty"`
@@ -37,6 +40,11 @@ type RoleQuery struct {
 	Limit    int    `json:"limit"`
 	Offset   int    `json:"offset"`
 	Detailed bool   `json:"detailed"`
+}
+
+type CreateRoleInput struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
 }
 
 func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
@@ -100,7 +108,7 @@ func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
 	for rows.Next() {
 		var id string
 		var name string
-		var description string
+		var description *string
 		var createdAt time.Time
 		var updatedAt *time.Time
 		var createdByID *string
@@ -140,4 +148,46 @@ func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
 		return nil, ErrRoleNotFound
 	}
 	return roles, nil
+}
+
+func (s *Service) CreateRole(f *flux.Flow, in CreateRoleInput) (Role, error) {
+	var errs valid.Errors
+	if in.Name == "" {
+		errs = append(errs, valid.Error{Field: "name", Error: "Required."})
+	}
+	if len(errs) != 0 {
+		return Role{}, errs
+	}
+
+	sql, args := psql.Select(
+		sm.Columns("id"),
+		sm.From("auth.roles"),
+		sm.Where(psql.Quote("name").EQ(psql.Arg(in.Name))),
+	).MustBuild()
+
+	var roleExists bool
+	if err := s.db.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&roleExists); err != nil {
+		return Role{}, err
+	}
+	if roleExists {
+		return Role{}, ErrRoleExists
+	}
+
+	role := Role{
+		ID:          uuid.New().String(),
+		Name:        in.Name,
+		Description: in.Description,
+		CreatedAt:   f.Time,
+	}
+	sql, args = psql.Insert(
+		im.Into("auth.roles",
+			"id", "name", "description", "created_at", "created_by",
+		),
+		im.Values(psql.Arg(role.ID, role.Name, role.Description, role.CreatedAt, f.Session.User)),
+	).MustBuild()
+
+	if _, err := s.db.Exec(f.Ctx, sql, args...); err != nil {
+		return Role{}, err
+	}
+	return role, nil
 }
