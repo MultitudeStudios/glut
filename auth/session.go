@@ -276,7 +276,7 @@ func (s *Service) CreateSession(f *flux.Flow, in Credentials) (Session, error) {
 func (s *Service) ClearSessions(f *flux.Flow, in ClearSessionInput) (int, error) {
 	var errs valid.Errors
 	if len(in.IDs) == 0 && in.UserID == "" {
-		errs = append(errs, valid.Error{Error: "Input cannot be empty."})
+		errs = append(errs, valid.Error{Error: "Input required."})
 	}
 	if !valid.IsUUIDSlice(in.IDs) {
 		errs = append(errs, valid.Error{Field: "ids", Error: "Contains invalid id."})

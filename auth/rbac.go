@@ -10,6 +10,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
 )
 
 const (
@@ -45,6 +46,12 @@ type RoleQuery struct {
 type CreateRoleInput struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
+}
+
+type UpdateRoleInput struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 func (s *Service) Roles(f *flux.Flow, in RoleQuery) ([]Role, error) {
@@ -190,4 +197,66 @@ func (s *Service) CreateRole(f *flux.Flow, in CreateRoleInput) (Role, error) {
 		return Role{}, err
 	}
 	return role, nil
+}
+
+func (s *Service) UpdateRole(f *flux.Flow, in UpdateRoleInput) error {
+	var errs valid.Errors
+	if in.ID == "" {
+		errs = append(errs, valid.Error{Field: "id", Error: "Required."})
+	}
+	if in.ID != "" && !valid.IsUUID(in.ID) {
+		errs = append(errs, valid.Error{Field: "id", Error: "Invalid id."})
+	}
+	if in.Name == "" && in.Description == "" {
+		errs = append(errs, valid.Error{Error: "Input required."})
+	}
+	if len(errs) != 0 {
+		return errs
+	}
+
+	if in.Name != "" {
+		sql, args := psql.Select(
+			sm.Columns("id"),
+			sm.From("auth.roles"),
+			psql.WhereAnd(
+				sm.Where(psql.Quote("id").NE(psql.Arg(in.ID))),
+				sm.Where(psql.Quote("name").EQ(psql.Arg(in.Name))),
+			),
+		).MustBuild()
+
+		var roleExists bool
+		if err := s.db.QueryRow(f.Ctx, sqlutil.Exists(sql), args...).Scan(&roleExists); err != nil {
+			return err
+		}
+		if roleExists {
+			return ErrRoleExists
+		}
+	}
+
+	q := psql.Update(
+		um.Table("auth.roles"),
+		um.Set("updated_at").ToArg(f.Time),
+		um.Set("updated_by").ToArg(f.Session.User),
+		um.Where(psql.Quote("id").EQ(psql.Arg(in.ID))),
+	)
+	if in.Name != "" {
+		q.Apply(
+			um.Set("name").ToArg(in.Name),
+		)
+	}
+	if in.Description != "" {
+		q.Apply(
+			um.Set("description").ToArg(in.Description),
+		)
+	}
+	sql, args := q.MustBuild()
+
+	res, err := s.db.Exec(f.Ctx, sql, args...)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrRoleNotFound
+	}
+	return nil
 }

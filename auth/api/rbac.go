@@ -50,3 +50,26 @@ func createRole(s *auth.Service) flux.HandlerFunc {
 		return f.Respond(http.StatusOK, role)
 	}
 }
+
+func updateRole(s *auth.Service) flux.HandlerFunc {
+	return func(f *flux.Flow) error {
+		var in auth.UpdateRoleInput
+		if err := f.Bind(&in); err != nil {
+			return err
+		}
+
+		if err := s.UpdateRole(f, in); err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			if errors.Is(err, auth.ErrRoleNotFound) {
+				return flux.NotFoundError("Role not found.")
+			}
+			if errors.Is(err, auth.ErrRoleExists) {
+				return flux.ExistsError("Role already exists.")
+			}
+			return fmt.Errorf("api.updateRole: %w", err)
+		}
+		return f.Respond(http.StatusOK, nil)
+	}
+}
