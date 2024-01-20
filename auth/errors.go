@@ -18,4 +18,5 @@ var (
 	ErrBanExists          = errors.New("ban already exists")
 	ErrRoleNotFound       = errors.New("role not found")
 	ErrRoleExists         = errors.New("role already exists")
+	ErrPermissionNotFound = errors.New("permission not found")
 )

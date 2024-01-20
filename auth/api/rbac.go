@@ -95,3 +95,24 @@ func deleteRole(s *auth.Service) flux.HandlerFunc {
 		return f.Respond(http.StatusOK, &response{count})
 	}
 }
+
+func queryPermissions(s *auth.Service) flux.HandlerFunc {
+	return func(f *flux.Flow) error {
+		var in auth.PermissionQuery
+		if err := f.Bind(&in); err != nil {
+			return err
+		}
+
+		permissions, err := s.Permissions(f, in)
+		if err != nil {
+			if verr, ok := err.(valid.Errors); ok {
+				return flux.ValidationError(verr)
+			}
+			if errors.Is(err, auth.ErrPermissionNotFound) {
+				return flux.NotFoundError("Permission not found.")
+			}
+			return fmt.Errorf("api.queryPermissions: %w", err)
+		}
+		return f.Respond(http.StatusOK, permissions)
+	}
+}
