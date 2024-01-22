@@ -15,3 +15,16 @@ INSERT INTO auth.roles (id, name, description, created_at, created_by) VALUES
 
 INSERT INTO auth.bans (user_id, reason, description, banned_by, banned_at, unbanned_at) VALUES
     ('f2fb78ed-8e17-44d3-b46d-349a78bf7014', 'spam', null, '0b73f55e-bec8-44c1-a00d-645ad7319933', now(), now());
+
+INSERT INTO auth.permissions (id, name, description, created_at, created_by) VALUES
+    ('3eeea1d9-936f-409e-adc2-0559e6414136', 'users:read', 'Read user data.', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933'),
+    ('2aac1e03-d0d1-4499-b73c-b1b64354af2f', 'users:delete', 'Delete user data.', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933');
+
+INSERT INTO auth.role_permissions (id, role_id, permission_id, created_at, created_by) VALUES
+    ('baeb9b61-70a5-4d22-8f36-578649102f08', 'db531eca-1a7a-4768-9652-994f719b567e', '3eeea1d9-936f-409e-adc2-0559e6414136', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933'),
+    ('a204ed75-75b9-47af-8b5a-bafa8e03703b', 'db531eca-1a7a-4768-9652-994f719b567e', '2aac1e03-d0d1-4499-b73c-b1b64354af2f', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933'),
+    ('9958b21a-510a-40f5-8227-d3c061881494', '0f5ac467-5941-4cc3-9352-dbb2ef3ea3e8', '3eeea1d9-936f-409e-adc2-0559e6414136', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933');
+
+INSERT INTO auth.user_roles (id, role_id, user_id, created_at, created_by) VALUES
+    ('53328f2f-c671-426d-a452-f7a97d066a2e', 'db531eca-1a7a-4768-9652-994f719b567e', '0b73f55e-bec8-44c1-a00d-645ad7319933', now(), null),
+    ('d413dc99-7689-431b-9feb-631fe234894b', '0f5ac467-5941-4cc3-9352-dbb2ef3ea3e8', 'f2fb78ed-8e17-44d3-b46d-349a78bf7014', now(), '0b73f55e-bec8-44c1-a00d-645ad7319933');

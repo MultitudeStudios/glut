@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"glut/common/flux"
 	"glut/common/sqlutil"
 	"glut/common/valid"
@@ -116,12 +115,16 @@ func (s *Service) Users(f *flux.Flow, in UserQuery) ([]User, error) {
 	}
 	if in.Email != "" {
 		q.Apply(
-			sm.Where(psql.Quote("email").ILike(psql.Arg(fmt.Sprintf("%%%s%%", in.Email)))),
+			sm.Where(psql.Quote("email").ILike(
+				psql.Arg(sqlutil.Like(in.Email)),
+			)),
 		)
 	}
 	if in.Username != "" {
 		q.Apply(
-			sm.Where(psql.Quote("username").ILike(psql.Arg(fmt.Sprintf("%%%s%%", in.Username)))),
+			sm.Where(psql.Quote("username").ILike(
+				psql.Arg(sqlutil.Like(in.Username)),
+			)),
 		)
 	}
 	if sortDir == sqlutil.SortDirAsc {
